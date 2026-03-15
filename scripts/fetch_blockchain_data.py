@@ -114,6 +114,67 @@ def get_btc_transaction(tx_hash: str) -> dict:
         raise BlockchainAPIError(f"Error fetching BTC transaction: {str(e)}")
 
 
+def get_btc_transactions_by_address(address: str, limit: int = 50) -> list:
+    """
+    Fetch transactions for a Bitcoin address from Blockchain.com API.
+    Returns transactions where this address appears as a sender (cashout flow).
+
+    Args:
+        address: Bitcoin address (bc1..., 1..., 3...)
+        limit:   Max transactions to retrieve (default 50)
+
+    Returns:
+        List of dicts with keys: hash, time, fee_satoshi, out_total_satoshi, from_address
+
+    Raises:
+        BlockchainAPIError: on network or parse failure after retries
+    """
+    url = f"https://blockchain.info/address/{address}?format=json&limit={limit}"
+    max_retries = 3
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            results = []
+            for tx in data.get('txs', []):
+                tx_hash = tx.get('hash', '')
+                tx_time = tx.get('time', 0)
+
+                # Fee = sum of inputs - sum of outputs (in satoshis)
+                input_total = sum(
+                    inp.get('prev_out', {}).get('value', 0)
+                    for inp in tx.get('inputs', [])
+                )
+                output_total = sum(out.get('value', 0) for out in tx.get('out', []))
+                fee_satoshi = max(0, input_total - output_total)
+
+                results.append({
+                    'hash': tx_hash,
+                    'time': tx_time,
+                    'fee_satoshi': fee_satoshi,
+                    'out_total_satoshi': output_total,
+                    'from_address': address,
+                })
+
+            time.sleep(0.5)  # Respect blockchain.info rate limits
+            return results
+
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                time.sleep(wait_time)
+            else:
+                raise BlockchainAPIError(
+                    f"Error fetching BTC transactions for address {address} "
+                    f"after {max_retries} attempts: {str(e)}"
+                )
+
+    return []
+
+
 def get_eth_transaction(tx_hash: str, api_key: str) -> dict:
     """
     Fetch Ethereum transaction details from Etherscan API V2.
