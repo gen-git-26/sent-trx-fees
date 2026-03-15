@@ -24,7 +24,7 @@ _block_cache_lock = threading.Lock()
 # Rate limiter for Etherscan free tier: max 4 req/s (limit is 5, we keep margin)
 _etherscan_lock = threading.Lock()
 _etherscan_last_call: float = 0.0
-_ETHERSCAN_MIN_INTERVAL = 0.25  # seconds between calls = 4 req/s
+_ETHERSCAN_MIN_INTERVAL = 0.4   # seconds between calls = 2.5 req/s (safe margin for free tier)
 
 
 def _etherscan_get(url: str, params: dict, timeout: int = 10) -> requests.Response:
@@ -245,7 +245,10 @@ def get_eth_transaction(tx_hash: str, api_key: str) -> dict:
                 'chainid': '1'
             }
             block_data = _etherscan_get(base_url, block_params).json()
-            timestamp = int(block_data.get('result', {}).get('timestamp', '0x0'), 16)
+            block_result = block_data.get('result')
+            if not isinstance(block_result, dict):
+                raise BlockchainAPIError(f"Block data not found or API error: {block_result or block_number}")
+            timestamp = int(block_result.get('timestamp', '0x0'), 16)
             with _block_cache_lock:
                 _block_cache[block_number] = timestamp
         date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
