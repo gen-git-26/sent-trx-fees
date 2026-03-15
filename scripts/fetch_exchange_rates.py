@@ -4,6 +4,7 @@ Rates are fetched on demand and cached in memory for the duration of a run.
 """
 
 import math
+import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Optional, Dict
@@ -69,7 +70,7 @@ def get_historical_rate(date: str, cache: Optional[Dict] = None) -> float:
     )
 
 
-def _extract_close(df) -> Optional[float]:
+def _extract_close(df: "pd.DataFrame") -> Optional[float]:
     """Return the Close value from a single-row yfinance DataFrame, or None."""
     if df is None or df.empty:
         return None
@@ -82,7 +83,7 @@ def _extract_close(df) -> Optional[float]:
         return None
 
 
-def _extract_last_close(df) -> Optional[float]:
+def _extract_last_close(df: "pd.DataFrame") -> Optional[float]:
     """Return the last non-NaN Close value from a multi-row yfinance DataFrame, or None."""
     if df is None or df.empty:
         return None
