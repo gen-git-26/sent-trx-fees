@@ -430,8 +430,8 @@ def main():
     processed_hashes = load_processed_transactions(output_file)
     file_exists = os.path.exists(output_file)
 
-    # Pre-load exchange rates from CSV once (avoids re-reading the file for each date)
-    print("Pre-loading exchange rates...")
+    # Exchange rates are fetched on demand from Yahoo Finance and cached in memory
+    print("Exchange rates will be fetched on demand from Yahoo Finance...")
     rate_cache = preload_all_rates()
     price_cache: Dict = {}
     cache_lock = threading.Lock()  # Protects price_cache across threads
