@@ -1,4 +1,0 @@
-hash,blockchain,transaction_type,amount,wallet_address,date,fee_crypto,fee_crypto_symbol,fee_usd,usd_ils_rate,fee_ils_standard,fee_ils_markup_6pct,crypto_amount_sent,error
-0x7f7d5844a0b587c479adf02ba52cc8f05bde86afe32acc24a0acf4901a87ea59,ETH,send,0.474075,0x606b7ec80950872f5ee7055050ad5243ac5318af,14/12/2025,2.20E-05,ETH,0.07,3.202,0.22,0.23,0.474075,
-7c78c3cd73ca03cc15cc1ef43fc2c15eb76364ce92aa1592ee468041d91b7174,BTC,send,0.01847593,bc1qusy8mrjp2psgww20ev74d54hm2vagh3j9sa6fh,14/12/2025,2.07E-06,BTC,0.19,3.202,0.6,0.63,0.01847593,
-0xa6030518cadbc96876b2f00bf9668c4ed2c739dd537e9d266749476605c0a778,USDT-ERC20,send,541.543719,0x3575e2f013765ab5adb003d790c0a74fbb746ffa,14/12/2025,4.85E-05,ETH,0.15,3.202,0.48,0.51,541.543719,

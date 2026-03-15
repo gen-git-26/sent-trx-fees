@@ -1,2 +1,0 @@
-hash,blockchain,transaction_type,amount,wallet_addr,date,fee_crypto,fee_crypto_ticker,fee_usd,usd_ils_rate,fee_ils_standard,fee_ils_markup_6pct
-0x9f2d73d1b97630cb291053583dfca89f31668aae926975dc31ad5a4d5f1f1f7e,ETH,Cash Out,0.57096334,0x56b753121e4e9c76f6a02869ec1d40c0e9ee3a3b,2025-12-24,0.00002183,ETH,0.06,3.1910,0.21,0.22

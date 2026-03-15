@@ -15,7 +15,7 @@ import csv
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -130,18 +130,7 @@ def get_crypto_usd_price(crypto_symbol: str, date: str, cache: Dict) -> float:
         return float(price)
 
     except Exception as e:
-        print(f"Warning: Could not fetch {crypto_symbol} price for {date}: {e}")
-
-        # Fallback to approximate prices
-        fallback_prices = {
-            'BTC': 45000.0,
-            'ETH': 2500.0,
-            'USDT': 1.0
-        }
-
-        price = fallback_prices.get(crypto_symbol, 0.0)
-        cache[cache_key] = price
-        return price
+        raise RuntimeError(f"Could not fetch {crypto_symbol} price for {date}: {e}") from e
 
 
 def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, price_cache: Dict, max_retries: int = 3) -> Dict:
@@ -194,8 +183,8 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
             try:
                 usd_ils_rate = get_historical_rate(date, rate_cache)
             except ExchangeRateAPIError as e:
-                print(f"  ⚠️  Warning: Could not get exchange rate for {date}: {e}")
-                usd_ils_rate = 3.7  # Fallback rate
+                raise RuntimeError(f"Could not get exchange rate for {date}: {e}") from e
+
 
             # Calculate fees in ILS
             fee_ils_standard = fee_usd * usd_ils_rate
@@ -273,7 +262,7 @@ def load_processed_transactions(output_file: str) -> set:
     return processed_hashes
 
 
-def write_transaction_to_csv(result: Dict, output_file: str, columns: List[str], write_header: bool = False, lock: threading.Lock | None = None) -> bool:
+def write_transaction_to_csv(result: Dict, output_file: str, columns: List[str], write_header: bool = False, lock: Optional[threading.Lock] = None) -> bool:
     """
     Write a single transaction result to CSV file immediately (incremental write).
 
