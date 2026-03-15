@@ -233,14 +233,15 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
 
 def load_processed_transactions(output_file: str) -> set:
     """
-    Load already processed transaction hashes from existing output file.
-    Returns a set of transaction hashes that have already been processed.
+    Load successfully processed transaction hashes from existing output file.
+    Rows with errors are excluded so they will be retried on the next run.
+    Also rewrites the file without failed rows so new results can be appended cleanly.
 
     Args:
         output_file: Path to output CSV file
 
     Returns:
-        Set of processed transaction hashes (lowercase)
+        Set of successfully processed transaction hashes (lowercase)
     """
     processed_hashes = set()
 
@@ -250,12 +251,26 @@ def load_processed_transactions(output_file: str) -> set:
     try:
         with open(output_file, mode='r', newline='', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
-            for row in reader:
-                if 'hash' in row and row['hash']:
-                    processed_hashes.add(row['hash'].lower())
+            fieldnames = reader.fieldnames or []
+            rows = list(reader)
 
-        if processed_hashes:
-            print(f"📊 Resume mode: Found {len(processed_hashes)} already processed transactions")
+        successful_rows = [r for r in rows if not r.get('error')]
+        failed_count = len(rows) - len(successful_rows)
+
+        # Rewrite file with only successful rows so failed ones can be retried
+        if failed_count > 0:
+            with open(output_file, mode='w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(successful_rows)
+
+        for row in successful_rows:
+            if row.get('hash'):
+                processed_hashes.add(row['hash'].lower())
+
+        print(f"Resume mode: {len(processed_hashes)} successful transactions found")
+        if failed_count > 0:
+            print(f"Resume mode: {failed_count} failed transactions will be retried")
     except Exception as e:
         print(f"Warning: Could not read existing output file: {e}")
 

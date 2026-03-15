@@ -219,10 +219,10 @@ def process_btc_cashout_tx(raw_tx: dict, price_cache: dict, rate_cache: dict) ->
             'date': date_str,
             'fee_crypto': round(fee_btc, 8),
             'fee_crypto_symbol': 'BTC',
-            'fee_usd': round(fee_usd, 2),
+            'fee_usd': round(fee_usd, 3),
             'usd_ils_rate': round(usd_ils_rate, 4),
-            'fee_ils_standard': round(fee_ils_standard, 2),
-            'fee_ils_markup_6pct': round(fee_ils_markup, 2),
+            'fee_ils_standard': round(fee_ils_standard, 3),
+            'fee_ils_markup_6pct': round(fee_ils_markup, 3),
             'crypto_amount_sent': round(amount_btc, 8),
             'error': None,
         }
@@ -328,66 +328,76 @@ def main():
                 future.result()
 
     # -----------------------------------------------------------------------
-    # Process cashout ETH addresses (sequential - Etherscan rate limits)
+    # Process cashout ETH addresses (threaded - rate limiting via _etherscan_get)
     # -----------------------------------------------------------------------
-    if cashout_addresses:
-        print(f"\n--- Processing {len(cashout_addresses)} cashout ETH addresses ---")
+    total_cashout = len(cashout_addresses)
 
-        for idx, address in enumerate(cashout_addresses, 1):
-            print(f"\n[cashout {idx}/{len(cashout_addresses)}] Scanning: {address}")
+    def process_cashout_one(item: tuple) -> None:
+        idx, address = item
+        print(f"[cashout {idx}/{total_cashout}] Scanning: {address}")
 
-            if not etherscan_api_key:
-                print("  Skipped: ETHERSCAN_API_KEY not set")
-                continue
+        if not etherscan_api_key:
+            print(f"  [{address[:12]}] Skipped: ETHERSCAN_API_KEY not set")
+            return
 
-            try:
-                matching_txs = get_transactions_from_address(address, etherscan_api_key)
-                time.sleep(2)  # Rate limiting
+        try:
+            matching_txs = get_transactions_from_address(address, etherscan_api_key)
 
-                if not matching_txs:
-                    print("  No matching transactions found.")
-                    continue
+            if not matching_txs:
+                print(f"  [{address[:12]}] No matching transactions found.")
+                return
 
-                print(f"  Found {len(matching_txs)} transaction(s).")
+            print(f"  [{address[:12]}] Found {len(matching_txs)} transaction(s).")
 
-                for tx_data in matching_txs:
-                    tx_hash = tx_data['hash']
+            for tx_data in matching_txs:
+                tx_hash = tx_data['hash']
 
+                with cache_lock:
                     if tx_hash.lower() in processed_hashes:
                         with counters_lock:
                             counters['skipped'] += 1
                         print(f"  Skipping {tx_hash[:12]}... (already processed)")
                         continue
+                    local_price_cache = dict(price_cache)
 
-                    print(f"  Processing {tx_hash[:12]}...")
-                    result = process_transaction_data(tx_data, price_cache, rate_cache)
+                result = process_transaction_data(tx_data, local_price_cache, rate_cache)
 
-                    if result:
-                        result = normalize_cashout_row(result)
+                with cache_lock:
+                    price_cache.update(local_price_cache)
 
-                        with counters_lock:
-                            is_first_new = (counters['new'] == 0 and not file_exists)
+                if result:
+                    result = normalize_cashout_row(result)
 
-                        if write_transaction_to_csv(
-                            result, output_csv, OUTPUT_COLUMNS, is_first_new, csv_lock
-                        ):
+                    with counters_lock:
+                        is_first_new = (counters['new'] == 0 and not file_exists)
+
+                    if write_transaction_to_csv(
+                        result, output_csv, OUTPUT_COLUMNS, is_first_new, csv_lock
+                    ):
+                        with cache_lock:
                             processed_hashes.add(tx_hash.lower())
-                            with counters_lock:
-                                counters['new'] += 1
-                            print(f"  OK")
-                        else:
-                            print(f"  Processed but failed to write")
-                    else:
                         with counters_lock:
-                            counters['failed'] += 1
-                        print(f"  Failed to process")
+                            counters['new'] += 1
+                        print(f"  [{tx_hash[:12]}] OK")
+                    else:
+                        print(f"  [{tx_hash[:12]}] Processed but failed to write")
+                else:
+                    with counters_lock:
+                        counters['failed'] += 1
+                    print(f"  [{tx_hash[:12]}] Failed to process")
 
-            except TransactionValidationError as e:
-                print(f"  Error scanning {address}: {e}")
-            except Exception as e:
-                print(f"  Unexpected error scanning {address}: {e}")
+        except TransactionValidationError as e:
+            print(f"  Error scanning {address}: {e}")
+        except Exception as e:
+            print(f"  Unexpected error scanning {address}: {e}")
 
-            time.sleep(1)
+    if cashout_addresses:
+        print(f"\n--- Processing {total_cashout} cashout ETH addresses ---")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(process_cashout_one, item)
+                       for item in enumerate(cashout_addresses, 1)]
+            for future in as_completed(futures):
+                future.result()
 
     # -----------------------------------------------------------------------
     # Summary

@@ -19,6 +19,7 @@ if current_dir not in sys.path:
 try:
     from fetch_exchange_rates import get_historical_rate, ExchangeRateAPIError
     from process_transactions import get_crypto_usd_price
+    from fetch_blockchain_data import _etherscan_get
 except ImportError:
     print("Error: Could not import helper modules. Make sure you are in the correct directory.")
     sys.exit(1)
@@ -63,8 +64,7 @@ def get_transactions_from_address(address: str, api_key: str, max_retries: int =
 
     for attempt in range(max_retries):
         try:
-            response = requests.get(ETHERSCAN_API_URL, params=params, timeout=15)
-            response.raise_for_status()
+            response = _etherscan_get(ETHERSCAN_API_URL, params)
             data = response.json()
 
             # Etherscan returns "0" for status 0 (error) and "1" for status 1 (ok)

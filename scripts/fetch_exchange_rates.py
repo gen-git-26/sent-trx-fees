@@ -6,13 +6,68 @@ Uses Bank of Israel API for current date, local CSV file for historical dates.
 import requests
 import csv
 import os
+import threading
 from datetime import datetime
 from typing import Optional, Dict
+
+_csv_write_lock = threading.Lock()
 
 
 class ExchangeRateAPIError(Exception):
     """Custom exception for exchange rate API errors"""
     pass
+
+
+def _get_csv_path() -> str:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(os.path.dirname(script_dir), 'assets', 'usd_ils_rates.csv')
+
+
+def _fetch_boi_rate(date_str: str) -> Optional[float]:
+    """Fetch a single date's USD/ILS rate from Bank of Israel API."""
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        params = {
+            'currencyCode': 'USD',
+            'startDate': date_obj.strftime('%Y-%m-%d'),
+            'endDate': date_obj.strftime('%Y-%m-%d'),
+        }
+        response = requests.get(
+            "https://www.boi.org.il/PublicApi/GetExchangeRates",
+            params=params, timeout=15
+        )
+        response.raise_for_status()
+        for entry in response.json().get('exchangeRates', []):
+            rate = entry.get('currentExchangeRate') or entry.get('rate')
+            if rate:
+                return float(rate)
+    except Exception:
+        pass
+    return None
+
+
+def _save_rate_to_csv(date_str: str, rate: float) -> None:
+    """Add a new rate to the CSV file, keeping it sorted descending by date (thread-safe)."""
+    csv_path = _get_csv_path()
+    date_formatted = datetime.strptime(date_str, '%Y-%m-%d').strftime('%d.%m.%Y')
+
+    with _csv_write_lock:
+        existing: Dict[str, float] = {}
+        if os.path.exists(csv_path):
+            with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+                for row in csv.DictReader(f):
+                    try:
+                        d = datetime.strptime(row['date'].strip(), '%d.%m.%Y').strftime('%Y-%m-%d')
+                        existing[d] = float(row['rate'].strip().replace(',', '.'))
+                    except (ValueError, KeyError):
+                        continue
+        existing[date_str] = rate
+        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['date', 'rate'])
+            for d in sorted(existing.keys(), reverse=True):
+                d_fmt = datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m.%Y')
+                writer.writerow([d_fmt, f'\t{existing[d]:.4f}'])
 
 
 def get_historical_rate(date: str, cache: Optional[Dict] = None) -> float:
@@ -108,11 +163,7 @@ def get_rate_from_csv(date: str, cache: Optional[Dict] = None) -> float:
         return cache[date]
 
     try:
-        # Get the path to the CSV file
-        # The CSV is in assets/usd_ils_rates.csv relative to the project root
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(script_dir)
-        csv_path = os.path.join(project_root, 'assets', 'usd_ils_rates.csv')
+        csv_path = _get_csv_path()
 
         if not os.path.exists(csv_path):
             raise ExchangeRateAPIError(
@@ -150,7 +201,15 @@ def get_rate_from_csv(date: str, cache: Optional[Dict] = None) -> float:
                 cache[date] = rate
             return rate
 
-        # If exact date not found (weekend/holiday), find closest previous date
+        # Not in CSV — try fetching from Bank of Israel and save for future runs
+        fetched = _fetch_boi_rate(date)
+        if fetched:
+            _save_rate_to_csv(date, fetched)
+            if cache is not None:
+                cache[date] = fetched
+            return fetched
+
+        # Weekend/holiday — use closest previous business day rate
         rate = get_closest_rate_from_dict(date, rates_dict, cache)
         if rate is not None:
             return rate
@@ -214,9 +273,7 @@ def preload_all_rates() -> Dict[str, float]:
     This avoids re-reading the CSV file once per unique date during processing.
     """
     cache: Dict[str, float] = {}
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    csv_path = os.path.join(project_root, 'assets', 'usd_ils_rates.csv')
+    csv_path = _get_csv_path()
 
     if not os.path.exists(csv_path):
         print(f"Warning: Exchange rate CSV not found at {csv_path}. Will use fallback rate.")

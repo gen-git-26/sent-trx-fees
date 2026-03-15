@@ -199,10 +199,11 @@ def get_eth_transaction(tx_hash: str, api_key: str) -> dict:
     try:
         data = _etherscan_get(base_url, params).json()
 
-        if data.get('result') is None:
-            raise BlockchainAPIError(f"Transaction not found: {tx_hash}")
+        result = data.get('result')
+        if result is None or not isinstance(result, dict):
+            raise BlockchainAPIError(f"Transaction not found or API error: {result or tx_hash}")
 
-        tx_data = data['result']
+        tx_data = result
 
         # Get transaction receipt for gas used
         receipt_params = {
@@ -215,10 +216,11 @@ def get_eth_transaction(tx_hash: str, api_key: str) -> dict:
 
         receipt_data = _etherscan_get(base_url, receipt_params).json()
 
-        if receipt_data.get('result') is None:
-            raise BlockchainAPIError(f"Transaction receipt not found: {tx_hash}")
+        receipt_result = receipt_data.get('result')
+        if receipt_result is None or not isinstance(receipt_result, dict):
+            raise BlockchainAPIError(f"Transaction receipt not found or API error: {receipt_result or tx_hash}")
 
-        receipt = receipt_data['result']
+        receipt = receipt_result
 
         # Calculate fee
         gas_used = int(receipt.get('gasUsed', '0x0'), 16)
