@@ -88,7 +88,7 @@ def get_transactions_from_address(address: str, api_key: str, max_retries: int =
         except requests.Timeout as e:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                print(f"  ⏱️  Timeout on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s...")
+                print(f"Timeout on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s...")
                 time.sleep(wait_time)
             else:
                 raise TransactionValidationError(f"Network timeout after {max_retries} attempts: {e}")
@@ -96,7 +96,7 @@ def get_transactions_from_address(address: str, api_key: str, max_retries: int =
         except requests.RequestException as e:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
-                print(f"  🔄 Network error on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s...")
+                print(f"Network error on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s...")
                 time.sleep(wait_time)
             else:
                 raise TransactionValidationError(f"Network error after {max_retries} attempts: {e}")
@@ -181,7 +181,7 @@ def load_processed_transactions(output_file: str):
                     processed_hashes.add(row['hash'].lower())
 
         if processed_hashes:
-            print(f"📊 Resume mode: Found {len(processed_hashes)} already processed transactions")
+            print(f"Resume mode: Found {len(processed_hashes)} already processed transactions")
     except Exception as e:
         print(f"Warning: Could not read existing output file: {e}")
 
@@ -220,10 +220,10 @@ def write_transaction_to_csv(result: dict, output_file: str, fieldnames: list, w
 
         return True
     except PermissionError:
-        print(f"  ❌ Error: Permission denied writing to {output_file}. Please close the file if it is open.")
+        print(f"Error: Permission denied writing to {output_file}. Please close the file if it is open.")
         return False
     except Exception as e:
-        print(f"  ❌ Error writing to CSV: {e}")
+        print(f"Error writing to CSV: {e}")
         return False
 
 if __name__ == "__main__":
