@@ -304,7 +304,7 @@ if __name__ == "__main__":
 
         # Skip Bitcoin addresses (bc1... format) - send only non-Bitcoin addresses to Etherscan
         if addr.lower().startswith('bc'):
-            print(f"  ⏭️  Skipped: Bitcoin address (bc format)")
+            print(f"Skipped: Bitcoin address (bc format)")
             continue
 
         try:
@@ -313,7 +313,7 @@ if __name__ == "__main__":
             time.sleep(2) # Rate limiting check - Increased to 2s
 
             if not matching_txs:
-                print("  ℹ️  No matching cash-out transactions found.")
+                print("  ℹNo matching cash-out transactions found.")
                 continue
 
             print(f"  Found {len(matching_txs)} matching transaction(s).")
@@ -323,11 +323,11 @@ if __name__ == "__main__":
 
                 # Check if already processed (resume logic)
                 if tx_hash.lower() in processed_hashes:
-                    print(f"  ⏭️  Skipping {tx_hash[:10]}... (already processed)")
+                    print(f"Skipping {tx_hash[:10]}... (already processed)")
                     skipped_count += 1
                     continue
 
-                print(f"  🔄 Processing {tx_hash[:10]}...")
+                print(f"Processing {tx_hash[:10]}...")
                 result = process_transaction_data(tx_data, price_cache, rate_cache)
 
                 if result:
@@ -336,26 +336,26 @@ if __name__ == "__main__":
                     if write_transaction_to_csv(result, output_file, fieldnames, write_header):
                         processed_hashes.add(tx_hash.lower())
                         new_transactions_count += 1
-                        print(f"  ✅ Success (saved to disk)")
+                        print(f"Success (saved to disk)")
                     else:
-                        print(f"  ⚠️  Processed but failed to write to disk")
+                        print(f"Processed but failed to write to disk")
                 else:
-                    print(f"  ❌ Failed to process")
+                    print(f"Failed to process")
 
         except TransactionValidationError as e:
-            print(f"❌ Error scanning {addr}: {e}")
+            print(f"Error scanning {addr}: {e}")
         except Exception as e:
-            print(f"❌ Unexpected error scanning {addr}: {e}")
+            print(f"Unexpected error scanning {addr}: {e}")
 
         # Additional sleep to be safe between addresses
         time.sleep(1)
 
     # Final summary
     print(f"\n{'='*60}")
-    print(f"✅ Processing complete!")
-    print(f"📊 Summary:")
-    print(f"   - New transactions processed: {new_transactions_count}")
-    print(f"   - Skipped (already processed): {skipped_count}")
-    print(f"   - Total in output file: {len(processed_hashes)}")
-    print(f"   - Output: {output_file}")
+    print(f"Processing complete!")
+    print(f"Summary:")
+    print(f" - New transactions processed: {new_transactions_count}")
+    print(f" - Skipped (already processed): {skipped_count}")
+    print(f" - Total in output file: {len(processed_hashes)}")
+    print(f" - Output: {output_file}")
     print(f"{'='*60}")
