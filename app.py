@@ -14,6 +14,7 @@ import streamlit as st
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 
 from runner import validate_csv_columns, run_pipeline, MissingColumnsError
+from process_merchant_csv import OUTPUT_COLUMNS
 
 # ---- Page config ----
 st.set_page_config(
@@ -35,14 +36,21 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
 
     # Validate columns immediately — write temp file just for validation, clean up after
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".csv", mode='wb') as tmp:
-        tmp.write(file_bytes)
-        tmp.flush()
-        try:
-            validate_csv_columns(tmp.name)
-        except MissingColumnsError as e:
-            st.error(f"Invalid file: {e}")
-            st.stop()
+    val_tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as val_tmp:
+            val_tmp.write(file_bytes)
+            val_tmp_path = val_tmp.name
+        validate_csv_columns(val_tmp_path)
+    except MissingColumnsError as e:
+        st.error(f"Invalid file: {e}")
+        st.stop()
+    finally:
+        if val_tmp_path:
+            try:
+                os.unlink(val_tmp_path)
+            except Exception:
+                pass
 
     st.success("File looks good. Ready to process.")
 
@@ -101,15 +109,20 @@ if uploaded_file is not None:
                     pass
 
         if not fatal:
-            total = summary.get('new', 0) + summary.get('failed', 0)
+            new = summary.get('new', 0)
             failed = summary.get('failed', 0)
+            skipped = summary.get('skipped', 0)
+            total = new + failed
 
-            if failed == 0:
-                st.success(f"Done — {summary.get('new', 0)} transactions processed successfully.")
+            if failed == 0 and skipped == 0:
+                st.success(f"Done — {new} transactions processed successfully.")
+            elif failed == 0:
+                st.warning(f"Done — {new} processed, {skipped} skipped (check ETHERSCAN_API_KEY or no matching transactions).")
             else:
-                st.warning(
-                    f"Done — {summary.get('new', 0)} succeeded, {failed} failed out of {total} total."
-                )
+                msg = f"Done — {new} succeeded, {failed} failed out of {total} total."
+                if skipped:
+                    msg += f" {skipped} skipped."
+                st.warning(msg)
 
             if errors:
                 st.markdown("**Transactions with errors:**")
@@ -120,7 +133,6 @@ if uploaded_file is not None:
                 st.subheader("Step 3 — Download Results")
 
                 output = io.StringIO()
-                from process_merchant_csv import OUTPUT_COLUMNS
                 writer = csv.DictWriter(output, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
                 writer.writeheader()
                 writer.writerows(rows)

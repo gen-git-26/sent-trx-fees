@@ -116,13 +116,14 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
 
         with counters_lock:
             processed_count += 1
+            current_count = processed_count
             if result.get('error'):
                 counters['failed'] += 1
                 errors.append({'hash': tx_hash, 'reason': result['error']})
             else:
                 counters['new'] += 1
 
-        return {'type': 'progress', 'current': processed_count, 'total': total, 'hash': tx_hash}
+        return {'type': 'progress', 'current': current_count, 'total': total, 'hash': tx_hash}
 
     # --- Cashout ETH ---
     def process_one_cashout(item):
