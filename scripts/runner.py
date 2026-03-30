@@ -55,7 +55,7 @@ def validate_csv_columns(file_path: str) -> None:
         raise MissingColumnsError(f"Missing required columns: {', '.join(sorted(missing))}")
 
 
-def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, None]:
+def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = None) -> Generator[Dict, None, None]:
     """
     Run the full processing pipeline.
 
@@ -66,7 +66,8 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
         {'type': 'done', 'rows': List[Dict], 'new': int, 'failed': int, 'skipped': int}
         {'type': 'fatal', 'message': str}   — if pipeline cannot proceed
     """
-    etherscan_api_key = os.getenv('ETHERSCAN_API_KEY')
+    if etherscan_api_key is None:
+        etherscan_api_key = os.getenv('ETHERSCAN_API_KEY')
 
     try:
         cashin_hashes, cashout_addresses = read_and_filter_merchant_csv(file_path)

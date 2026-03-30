@@ -73,7 +73,8 @@ if uploaded_file is not None:
             fatal = False
             summary = {}
 
-            for update in run_pipeline(tmp_path):
+            etherscan_key = st.secrets.get("ETHERSCAN_API_KEY") or os.getenv("ETHERSCAN_API_KEY")
+            for update in run_pipeline(tmp_path, etherscan_api_key=etherscan_key):
                 utype = update.get('type')
 
                 if utype == 'status':
