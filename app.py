@@ -32,34 +32,39 @@ st.subheader("Step 1 — Upload CSV")
 uploaded_file = st.file_uploader("Upload the ATM transactions CSV", type=["csv"])
 
 if uploaded_file is not None:
-    # Save to a temp file so existing scripts can read it from disk
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as tmp:
-        tmp.write(uploaded_file.read())
-        tmp_path = tmp.name
+    file_bytes = uploaded_file.read()
 
-    # Validate columns immediately
-    try:
-        validate_csv_columns(tmp_path)
-        st.success("File looks good. Ready to process.")
-    except MissingColumnsError as e:
-        st.error(f"Invalid file: {e}")
-        os.unlink(tmp_path)
-        st.stop()
+    # Validate columns immediately — write temp file just for validation, clean up after
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".csv", mode='wb') as tmp:
+        tmp.write(file_bytes)
+        tmp.flush()
+        try:
+            validate_csv_columns(tmp.name)
+        except MissingColumnsError as e:
+            st.error(f"Invalid file: {e}")
+            st.stop()
+
+    st.success("File looks good. Ready to process.")
 
     # ---- Step 2: Run ----
     st.markdown("---")
     st.subheader("Step 2 — Calculate Fees")
 
     if st.button("Calculate Fees", type="primary"):
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        rows = []
-        errors = []
-        fatal = False
-        summary = {}
-
+        tmp_path = None
         try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            rows = []
+            errors = []
+            fatal = False
+            summary = {}
+
             for update in run_pipeline(tmp_path):
                 utype = update.get('type')
 
@@ -89,10 +94,11 @@ if uploaded_file is not None:
             fatal = True
 
         finally:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
         if not fatal:
             total = summary.get('new', 0) + summary.get('failed', 0)
@@ -105,12 +111,10 @@ if uploaded_file is not None:
                     f"Done — {summary.get('new', 0)} succeeded, {failed} failed out of {total} total."
                 )
 
-            # Show error table if any
             if errors:
                 st.markdown("**Transactions with errors:**")
                 st.table([{"Hash / Address": e['hash'], "Reason": e['reason']} for e in errors])
 
-            # ---- Step 3: Download ----
             if rows:
                 st.markdown("---")
                 st.subheader("Step 3 — Download Results")
