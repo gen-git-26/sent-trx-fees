@@ -1,6 +1,8 @@
 # מחשבון עמלות בלוקצ'יין  
 
-![Logo](logo_bit.jpg)
+<p align="center">
+  <img src="logo_bit.jpg" alt="Bitcoin Change Logo" width="500">
+</p>
 
 מערכת לחישוב עמלות שליחה אשר מאתרת את עמלות הבלוקצ'יין ששולמו עבור כל עסקה, וממירה אותן לשקלים
 ---
