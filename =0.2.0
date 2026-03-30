@@ -1,0 +1,75 @@
+Collecting yfinance
+  Obtaining dependency information for yfinance from https://files.pythonhosted.org/packages/1e/60/462859de757ac56830824da7e8cf314b8b0321af5853df867c84cd6c2128/yfinance-1.2.0-py2.py3-none-any.whl.metadata
+  Downloading yfinance-1.2.0-py2.py3-none-any.whl.metadata (6.1 kB)
+Requirement already satisfied: pandas>=1.3.0 in ./.venv/lib/python3.12/site-packages (from yfinance) (3.0.1)
+Requirement already satisfied: numpy>=1.16.5 in ./.venv/lib/python3.12/site-packages (from yfinance) (2.4.3)
+Requirement already satisfied: requests>=2.31 in ./.venv/lib/python3.12/site-packages (from yfinance) (2.32.5)
+Collecting multitasking>=0.0.7 (from yfinance)
+  Using cached multitasking-0.0.12-py3-none-any.whl
+Collecting platformdirs>=2.0.0 (from yfinance)
+  Obtaining dependency information for platformdirs>=2.0.0 from https://files.pythonhosted.org/packages/63/d7/97f7e3a6abb67d8080dd406fd4df842c2be0efaf712d1c899c32a075027c/platformdirs-4.9.4-py3-none-any.whl.metadata
+  Downloading platformdirs-4.9.4-py3-none-any.whl.metadata (4.7 kB)
+Collecting pytz>=2022.5 (from yfinance)
+  Obtaining dependency information for pytz>=2022.5 from https://files.pythonhosted.org/packages/10/99/781fe0c827be2742bcc775efefccb3b048a3a9c6ce9aec0cbf4a101677e5/pytz-2026.1.post1-py2.py3-none-any.whl.metadata
+  Downloading pytz-2026.1.post1-py2.py3-none-any.whl.metadata (22 kB)
+Collecting frozendict>=2.3.4 (from yfinance)
+  Obtaining dependency information for frozendict>=2.3.4 from https://files.pythonhosted.org/packages/38/74/f94141b38a51a553efef7f510fc213894161ae49b88bffd037f8d2a7cb2f/frozendict-2.4.7-py3-none-any.whl.metadata
+  Downloading frozendict-2.4.7-py3-none-any.whl.metadata (23 kB)
+Collecting peewee>=3.16.2 (from yfinance)
+  Obtaining dependency information for peewee>=3.16.2 from https://files.pythonhosted.org/packages/4f/8e/943f57ce32eb005c7037110a759e2ebfb22e467a9a0efcb6d516c5bf00c6/peewee-4.0.2-py3-none-any.whl.metadata
+  Downloading peewee-4.0.2-py3-none-any.whl.metadata (8.6 kB)
+Collecting beautifulsoup4>=4.11.1 (from yfinance)
+  Obtaining dependency information for beautifulsoup4>=4.11.1 from https://files.pythonhosted.org/packages/1a/39/47f9197bdd44df24d67ac8893641e16f386c984a0619ef2ee4c51fbbc019/beautifulsoup4-4.14.3-py3-none-any.whl.metadata
+  Downloading beautifulsoup4-4.14.3-py3-none-any.whl.metadata (3.8 kB)
+Collecting curl_cffi<0.14,>=0.7 (from yfinance)
+  Obtaining dependency information for curl_cffi<0.14,>=0.7 from https://files.pythonhosted.org/packages/77/81/5bdb7dd0d669a817397b2e92193559bf66c3807f5848a48ad10cf02bf6c7/curl_cffi-0.13.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+  Downloading curl_cffi-0.13.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (13 kB)
+Collecting protobuf>=3.19.0 (from yfinance)
+  Obtaining dependency information for protobuf>=3.19.0 from https://files.pythonhosted.org/packages/b5/57/89727baef7578897af5ed166735ceb315819f1c184da8c3441271dbcfde7/protobuf-7.34.0-cp310-abi3-manylinux2014_x86_64.whl.metadata
+  Downloading protobuf-7.34.0-cp310-abi3-manylinux2014_x86_64.whl.metadata (595 bytes)
+Collecting websockets>=13.0 (from yfinance)
+  Obtaining dependency information for websockets>=13.0 from https://files.pythonhosted.org/packages/18/29/71729b4671f21e1eaa5d6573031ab810ad2936c8175f03f97f3ff164c802/websockets-16.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata
+  Downloading websockets-16.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.8 kB)
+Collecting soupsieve>=1.6.1 (from beautifulsoup4>=4.11.1->yfinance)
+  Obtaining dependency information for soupsieve>=1.6.1 from https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl.metadata
+  Downloading soupsieve-2.8.3-py3-none-any.whl.metadata (4.6 kB)
+Collecting typing-extensions>=4.0.0 (from beautifulsoup4>=4.11.1->yfinance)
+  Obtaining dependency information for typing-extensions>=4.0.0 from https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl.metadata
+  Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting cffi>=1.12.0 (from curl_cffi<0.14,>=0.7->yfinance)
+  Obtaining dependency information for cffi>=1.12.0 from https://files.pythonhosted.org/packages/78/2d/7fa73dfa841b5ac06c7b8855cfc18622132e365f5b81d02230333ff26e9e/cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata
+  Downloading cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
+Requirement already satisfied: certifi>=2024.2.2 in ./.venv/lib/python3.12/site-packages (from curl_cffi<0.14,>=0.7->yfinance) (2026.2.25)
+Requirement already satisfied: python-dateutil>=2.8.2 in ./.venv/lib/python3.12/site-packages (from pandas>=1.3.0->yfinance) (2.9.0.post0)
+Requirement already satisfied: charset_normalizer<4,>=2 in ./.venv/lib/python3.12/site-packages (from requests>=2.31->yfinance) (3.4.5)
+Requirement already satisfied: idna<4,>=2.5 in ./.venv/lib/python3.12/site-packages (from requests>=2.31->yfinance) (3.11)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv/lib/python3.12/site-packages (from requests>=2.31->yfinance) (2.6.3)
+Collecting pycparser (from cffi>=1.12.0->curl_cffi<0.14,>=0.7->yfinance)
+  Obtaining dependency information for pycparser from https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl.metadata
+  Downloading pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+Requirement already satisfied: six>=1.5 in ./.venv/lib/python3.12/site-packages (from python-dateutil>=2.8.2->pandas>=1.3.0->yfinance) (1.17.0)
+Downloading yfinance-1.2.0-py2.py3-none-any.whl (130 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 130.2/130.2 kB 12.4 MB/s eta 0:00:00
+Downloading beautifulsoup4-4.14.3-py3-none-any.whl (107 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 107.7/107.7 kB 17.7 MB/s eta 0:00:00
+Downloading curl_cffi-0.13.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (8.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.3/8.3 MB 54.4 MB/s eta 0:00:00
+Downloading frozendict-2.4.7-py3-none-any.whl (16 kB)
+Downloading peewee-4.0.2-py3-none-any.whl (143 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 143.3/143.3 kB 29.4 MB/s eta 0:00:00
+Downloading platformdirs-4.9.4-py3-none-any.whl (21 kB)
+Downloading protobuf-7.34.0-cp310-abi3-manylinux2014_x86_64.whl (324 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 324.3/324.3 kB 61.4 MB/s eta 0:00:00
+Downloading pytz-2026.1.post1-py2.py3-none-any.whl (510 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 510.5/510.5 kB 65.4 MB/s eta 0:00:00
+Downloading websockets-16.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (184 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 184.9/184.9 kB 41.4 MB/s eta 0:00:00
+Downloading cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (219 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 219.6/219.6 kB 51.3 MB/s eta 0:00:00
+Downloading soupsieve-2.8.3-py3-none-any.whl (37 kB)
+Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.6/44.6 kB 15.3 MB/s eta 0:00:00
+Downloading pycparser-3.0-py3-none-any.whl (48 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 48.2/48.2 kB 17.9 MB/s eta 0:00:00
+Installing collected packages: pytz, peewee, multitasking, websockets, typing-extensions, soupsieve, pycparser, protobuf, platformdirs, frozendict, cffi, beautifulsoup4, curl_cffi, yfinance
+Successfully installed beautifulsoup4-4.14.3 cffi-2.0.0 curl_cffi-0.13.0 frozendict-2.4.7 multitasking-0.0.12 peewee-4.0.2 platformdirs-4.9.4 protobuf-7.34.0 pycparser-3.0 pytz-2026.1.post1 soupsieve-2.8.3 typing-extensions-4.15.0 websockets-16.0 yfinance-1.2.0

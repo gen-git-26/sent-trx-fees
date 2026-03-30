@@ -194,16 +194,16 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
                 'hash': tx_hash,
                 'blockchain': tx_data['blockchain'],
                 'transaction_type': tx_data['transaction_type'],
-                'amount': round(tx_data['amount'], 8) if tx_data['amount'] else None,
+                'amount': tx_data['amount'] if tx_data['amount'] else None,
                 'wallet_address': tx_data['wallet_address'],
                 'date': date,
-                'fee_crypto': round(fee_crypto, 8),
+                'fee_crypto':fee_crypto,
                 'fee_crypto_symbol': fee_symbol,
-                'fee_usd': round(fee_usd, 2),
-                'fee_ils_standard': round(fee_ils_standard, 2),
-                'fee_ils_markup_6pct': round(fee_ils_markup, 2),
-                'crypto_amount_sent': round(tx_data['amount'], 8) if tx_data['amount'] else None,
-                'usd_ils_rate': round(usd_ils_rate, 4),
+                'fee_usd':fee_usd, 
+                'fee_ils_standard':fee_ils_standard, 
+                'fee_ils_markup_6pct':fee_ils_markup, 
+                'crypto_amount_sent':tx_data['amount'] if tx_data['amount'] else None,
+                'usd_ils_rate':usd_ils_rate, 
                 'error': None
             }
 
@@ -211,10 +211,10 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
             last_error = str(e)
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                print(f"  🔄 Error on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s... ({e})")
+                print(f"Error on attempt {attempt + 1}/{max_retries}. Retrying in {wait_time}s... ({e})")
                 time.sleep(wait_time)
             else:
-                print(f"  ❌ Failed after {max_retries} attempts: {e}")
+                print(f"Failed after {max_retries} attempts: {e}")
 
     # If all retries failed, return error result
     return {
@@ -343,8 +343,7 @@ def write_output_csv(output_path: str, results: List[Dict]):
         'usd_ils_rate',
         'fee_ils_standard',
         'fee_ils_markup_6pct',
-        'crypto_amount_sent',
-        'error'
+        'error',
     ]
 
     try:
@@ -450,8 +449,7 @@ def main():
         'usd_ils_rate',
         'fee_ils_standard',
         'fee_ils_markup_6pct',
-        'crypto_amount_sent',
-        'error'
+        'error',
     ]
 
     # Tracking (protected by csv_lock since multiple threads write)
