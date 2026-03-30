@@ -1,12 +1,6 @@
-<h1 align="center">מחשבון עמלות בלוקצ'יין</h1>
-
-<p align="center">
-  <img src="logo_bit.jpg" alt="Bitcoin Change Logo" width="500">
-</p>
-
-מערכת לחישוב עמלות שליחה 
+## מחשבון עמלות שליחה
 ---
-
+ 
 ## מה המערכת עושה?
 
 לכל עסקת cashIn/cashOut שבקובץ, המערכת:
