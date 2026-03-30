@@ -12,7 +12,6 @@ import sys
 import csv
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from typing import Dict, List, Generator
 
 from dotenv import load_dotenv
@@ -23,8 +22,8 @@ if _script_dir not in sys.path:
 
 load_dotenv()
 
-from fetch_exchange_rates import preload_all_rates, get_historical_rate, ExchangeRateAPIError
-from process_transactions import process_transaction, get_crypto_usd_price, load_processed_transactions
+from fetch_exchange_rates import preload_all_rates, ExchangeRateAPIError
+from process_transactions import process_transaction
 from eth_chash_out_exchange import get_transactions_from_address, process_transaction_data, TransactionValidationError
 from process_merchant_csv import (
     read_and_filter_merchant_csv,
@@ -72,7 +71,7 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
 
     try:
         cashin_hashes, cashout_addresses = read_and_filter_merchant_csv(file_path)
-    except SystemExit:
+    except SystemExit:  # read_and_filter_merchant_csv calls sys.exit(1) internally and we cannot modify that file
         yield {'type': 'fatal', 'message': 'Failed to parse the uploaded CSV.'}
         return
 
@@ -97,10 +96,11 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
     errors: List[Dict] = []
 
     total = len(cashin_hashes) + len(cashout_addresses)
-    processed_count = [0]
+    processed_count = 0
 
     # --- Cashin ---
     def process_one_cashin(item):
+        nonlocal processed_count
         i, tx_hash = item
         with cache_lock:
             local_price_cache = dict(price_cache)
@@ -116,23 +116,24 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
             rows.append(result)
 
         with counters_lock:
-            processed_count[0] += 1
+            processed_count += 1
             if result.get('error'):
                 counters['failed'] += 1
                 errors.append({'hash': tx_hash, 'reason': result['error']})
             else:
                 counters['new'] += 1
 
-        return {'type': 'progress', 'current': processed_count[0], 'total': total, 'hash': tx_hash}
+        return {'type': 'progress', 'current': processed_count, 'total': total, 'hash': tx_hash}
 
     # --- Cashout ETH ---
     def process_one_cashout(item):
+        nonlocal processed_count
         idx, address = item
         updates = []
 
         if not etherscan_api_key:
             with counters_lock:
-                processed_count[0] += 1
+                processed_count += 1
                 counters['skipped'] += 1
             return updates
 
@@ -140,7 +141,7 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
             matching_txs = get_transactions_from_address(address, etherscan_api_key)
             if not matching_txs:
                 with counters_lock:
-                    processed_count[0] += 1
+                    processed_count += 1
                     counters['skipped'] += 1
                 return updates
 
@@ -163,18 +164,18 @@ def run_pipeline(file_path: str, max_workers: int = 2) -> Generator[Dict, None, 
                 else:
                     with counters_lock:
                         counters['failed'] += 1
-                    errors.append({'hash': tx_hash, 'reason': 'process_transaction_data returned None'})
+                        errors.append({'hash': tx_hash, 'reason': 'process_transaction_data returned None'})
 
             with counters_lock:
-                processed_count[0] += 1
-            updates.append({'type': 'progress', 'current': processed_count[0], 'total': total, 'hash': address})
+                processed_count += 1
+            updates.append({'type': 'progress', 'current': processed_count, 'total': total, 'hash': address})
 
-        except (TransactionValidationError, Exception) as e:
+        except Exception as e:
             with counters_lock:
-                processed_count[0] += 1
+                processed_count += 1
                 counters['failed'] += 1
-            errors.append({'hash': address, 'reason': str(e)})
-            updates.append({'type': 'progress', 'current': processed_count[0], 'total': total, 'hash': address})
+                errors.append({'hash': address, 'reason': str(e)})
+            updates.append({'type': 'progress', 'current': processed_count, 'total': total, 'hash': address})
 
         return updates
 
