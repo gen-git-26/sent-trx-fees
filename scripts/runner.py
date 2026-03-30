@@ -22,14 +22,13 @@ if _script_dir not in sys.path:
 
 load_dotenv()
 
-from fetch_exchange_rates import preload_all_rates, ExchangeRateAPIError
+from fetch_exchange_rates import preload_all_rates
 from process_transactions import process_transaction
-from eth_chash_out_exchange import get_transactions_from_address, process_transaction_data, TransactionValidationError
+from eth_chash_out_exchange import get_transactions_from_address, process_transaction_data
 from process_merchant_csv import (
     read_and_filter_merchant_csv,
     normalize_cashin_row,
     normalize_cashout_row,
-    OUTPUT_COLUMNS,
 )
 
 REQUIRED_COLUMNS = {'txClass', 'status', 'txHash', 'toAddress', 'cryptoCode'}
