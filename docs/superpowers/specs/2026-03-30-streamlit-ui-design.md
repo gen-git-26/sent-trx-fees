@@ -84,6 +84,25 @@ Single page, three sequential steps:
 
 ---
 
+## Branding & Colors
+
+Logo file: `logo_bit.jpg` (displayed at top of page)
+
+Color palette derived from the Bitcoin Change logo:
+
+| Role | Color |
+|---|---|
+| Background | `#0d0d0d` (black) |
+| Primary accent | `#f7a51e` (gold/orange) |
+| Text | `#ffffff` (white) |
+| Buttons | `#f7a51e` background, `#0d0d0d` text |
+| Error banners | `#cc3333` |
+| Success banners | `#2a7a2a` |
+
+Streamlit custom theme applied via `.streamlit/config.toml`.
+
+---
+
 ## Constraints
 
 - Language: English
