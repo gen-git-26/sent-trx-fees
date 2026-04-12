@@ -55,23 +55,37 @@ def validate_csv_columns(file_path: str) -> None:
         raise MissingColumnsError(f"Missing required columns: {', '.join(sorted(missing))}")
 
 
-def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = None) -> Generator[Dict, None, None]:
+def run_pipeline(
+    file_path: str,
+    max_workers: int = 2,
+    etherscan_api_key: str = None,
+    skip_hashes: set = None,
+    skip_addresses: set = None,
+    stop_event=None,
+) -> Generator[Dict, None, None]:
     """
     Run the full processing pipeline.
 
     Yields dicts:
         {'type': 'status', 'message': str}
         {'type': 'progress', 'current': int, 'total': int, 'hash': str}
+        {'type': 'result', 'row': dict}
         {'type': 'error', 'hash': str, 'reason': str}
         {'type': 'done', 'rows': List[Dict], 'new': int, 'failed': int, 'skipped': int}
-        {'type': 'fatal', 'message': str}   — if pipeline cannot proceed
+        {'type': 'fatal', 'message': str}
+        {'type': 'stopped'}
     """
+    if skip_hashes is None:
+        skip_hashes = set()
+    if skip_addresses is None:
+        skip_addresses = set()
+
     if etherscan_api_key is None:
         etherscan_api_key = os.getenv('ETHERSCAN_API_KEY')
 
     try:
         cashin_hashes, cashout_addresses = read_and_filter_merchant_csv(file_path)
-    except SystemExit:  # read_and_filter_merchant_csv calls sys.exit(1) internally and we cannot modify that file
+    except SystemExit:
         yield {'type': 'fatal', 'message': 'Failed to parse the uploaded CSV.'}
         return
 
@@ -96,12 +110,19 @@ def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = 
     errors: List[Dict] = []
 
     total = len(cashin_hashes) + len(cashout_addresses)
-    processed_count = 0
+    processed_count = len(skip_hashes) + len(skip_addresses)
 
     # --- Cashin ---
     def process_one_cashin(item):
         nonlocal processed_count
         i, tx_hash = item
+
+        if tx_hash in skip_hashes:
+            return [{'type': 'skipped', 'hash': tx_hash}]
+
+        if stop_event and stop_event.is_set():
+            return [{'type': 'stopped'}]
+
         with cache_lock:
             local_price_cache = dict(price_cache)
 
@@ -124,13 +145,22 @@ def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = 
             else:
                 counters['new'] += 1
 
-        return {'type': 'progress', 'current': current_count, 'total': total, 'hash': tx_hash}
+        return [
+            {'type': 'result', 'row': result},
+            {'type': 'progress', 'current': current_count, 'total': total, 'hash': tx_hash},
+        ]
 
     # --- Cashout ETH ---
     def process_one_cashout(item):
         nonlocal processed_count
         idx, address = item
         updates = []
+
+        if address in skip_addresses:
+            return [{'type': 'skipped', 'hash': address}]
+
+        if stop_event and stop_event.is_set():
+            return [{'type': 'stopped'}]
 
         if not etherscan_api_key:
             with counters_lock:
@@ -162,6 +192,7 @@ def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = 
                         rows.append(result)
                     with counters_lock:
                         counters['new'] += 1
+                    updates.append({'type': 'result', 'row': result})
                 else:
                     with counters_lock:
                         counters['failed'] += 1
@@ -182,12 +213,22 @@ def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = 
 
     yield {'type': 'status', 'message': f'Processing {len(cashin_hashes)} cashin transactions...'}
 
+    stopped = False
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_one_cashin, item): item
                    for item in enumerate(cashin_hashes, 1)}
         for future in as_completed(futures):
-            update = future.result()
-            yield update
+            for update in future.result():
+                if update.get('type') == 'stopped':
+                    stopped = True
+                    break
+                yield update
+            if stopped:
+                break
+
+    if stopped:
+        yield {'type': 'stopped'}
+        return
 
     if cashout_addresses:
         yield {'type': 'status', 'message': f'Processing {len(cashout_addresses)} cashout ETH addresses...'}
@@ -195,9 +236,17 @@ def run_pipeline(file_path: str, max_workers: int = 2, etherscan_api_key: str = 
             futures = {executor.submit(process_one_cashout, item): item
                        for item in enumerate(cashout_addresses, 1)}
             for future in as_completed(futures):
-                updates = future.result()
-                for update in updates:
+                for update in future.result():
+                    if update.get('type') == 'stopped':
+                        stopped = True
+                        break
                     yield update
+                if stopped:
+                    break
+
+    if stopped:
+        yield {'type': 'stopped'}
+        return
 
     for err in errors:
         yield {'type': 'error', 'hash': err['hash'], 'reason': err['reason']}
