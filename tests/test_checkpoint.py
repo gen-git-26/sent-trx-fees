@@ -42,7 +42,7 @@ def test_append_result_and_load(tmp_path):
     fieldnames = ['hash', 'fee_usd', 'error']
     checkpoint.append_result({'hash': '0x1', 'fee_usd': '0.50', 'error': ''}, fieldnames)
     checkpoint.append_result({'hash': '0x2', 'fee_usd': '1.00', 'error': ''}, fieldnames)
-    rows = checkpoint.load_partial_results(fieldnames)
+    rows = checkpoint.load_partial_results()
     assert len(rows) == 2
     assert rows[0]['hash'] == '0x1'
     assert rows[1]['fee_usd'] == '1.00'
@@ -55,7 +55,7 @@ def test_clear_removes_files():
     checkpoint.append_result({'hash': '0x1', 'fee_usd': '1', 'error': ''}, fieldnames)
     checkpoint.clear()
     assert checkpoint.load() is None
-    assert checkpoint.load_partial_results(fieldnames) == []
+    assert checkpoint.load_partial_results() == []
 
 
 def test_append_result_creates_header_once(tmp_path):

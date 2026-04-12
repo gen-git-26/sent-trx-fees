@@ -4,6 +4,7 @@ checkpoint.py — Persist job state and partial results to disk.
 import csv
 import json
 import os
+import tempfile
 from typing import Dict, List, Optional
 
 CHECKPOINT_DIR = os.path.join(
@@ -34,8 +35,17 @@ def save(
         'started_at': started_at,
         'status': 'running',
     }
-    with open(STATE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(state, f, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=CHECKPOINT_DIR, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp, STATE_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def load() -> Optional[Dict]:
@@ -45,7 +55,7 @@ def load() -> Optional[Dict]:
     try:
         with open(STATE_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except Exception:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
@@ -60,7 +70,7 @@ def append_result(row: Dict, fieldnames: List[str]) -> None:
         writer.writerow(row)
 
 
-def load_partial_results(fieldnames: List[str]) -> List[Dict]:
+def load_partial_results() -> List[Dict]:
     """Return all rows written so far, or [] if file missing/unreadable."""
     if not os.path.exists(RESULTS_FILE):
         return []
@@ -68,7 +78,7 @@ def load_partial_results(fieldnames: List[str]) -> List[Dict]:
         with open(RESULTS_FILE, 'r', encoding='utf-8-sig', newline='') as f:
             reader = csv.DictReader(f)
             return list(reader)
-    except Exception:
+    except (csv.Error, UnicodeDecodeError):
         return []
 
 
