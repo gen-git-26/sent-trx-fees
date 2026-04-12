@@ -110,7 +110,7 @@ def run_pipeline(
     errors: List[Dict] = []
 
     total = len(cashin_hashes) + len(cashout_addresses)
-    processed_count = len(skip_hashes) + len(skip_addresses)
+    processed_count = len(skip_hashes & set(cashin_hashes)) + len(skip_addresses & set(cashout_addresses))
 
     # --- Cashin ---
     def process_one_cashin(item):
@@ -120,7 +120,7 @@ def run_pipeline(
         if tx_hash in skip_hashes:
             return [{'type': 'skipped', 'hash': tx_hash}]
 
-        if stop_event and stop_event.is_set():
+        if stop_event is not None and stop_event.is_set():
             return [{'type': 'stopped'}]
 
         with cache_lock:
@@ -159,7 +159,7 @@ def run_pipeline(
         if address in skip_addresses:
             return [{'type': 'skipped', 'hash': address}]
 
-        if stop_event and stop_event.is_set():
+        if stop_event is not None and stop_event.is_set():
             return [{'type': 'stopped'}]
 
         if not etherscan_api_key:
@@ -200,14 +200,16 @@ def run_pipeline(
 
             with counters_lock:
                 processed_count += 1
-            updates.append({'type': 'progress', 'current': processed_count, 'total': total, 'hash': address})
+                current_count = processed_count
+            updates.append({'type': 'progress', 'current': current_count, 'total': total, 'hash': address})
 
         except Exception as e:
             with counters_lock:
                 processed_count += 1
+                current_count = processed_count
                 counters['failed'] += 1
                 errors.append({'hash': address, 'reason': str(e)})
-            updates.append({'type': 'progress', 'current': processed_count, 'total': total, 'hash': address})
+            updates.append({'type': 'progress', 'current': current_count, 'total': total, 'hash': address})
 
         return updates
 
