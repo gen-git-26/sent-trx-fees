@@ -219,67 +219,72 @@ def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
             raise RuntimeError('A job is already running.')
         _job['status'] = 'starting'   # claim slot before releasing lock
 
-    h = _csv_hash(csv_bytes)
-    existing = _checkpoint.load()
+    try:
+        h = _csv_hash(csv_bytes)
+        existing = _checkpoint.load()
 
-    skip_hashes: set = set()
-    skip_addresses: set = set()
-    prior_rows: List[dict] = []
+        skip_hashes: set = set()
+        skip_addresses: set = set()
+        prior_rows: List[dict] = []
 
-    if existing:
-        if existing.get('csv_hash') == h:
-            skip_hashes = set(existing.get('processed_hashes', []))
-            skip_addresses = set(existing.get('processed_addresses', []))
-            prior_rows = _checkpoint.load_partial_results()
-            csv_path = existing.get('csv_path', '')
-            if not (csv_path and os.path.exists(csv_path)):
-                # temp CSV gone, write new one
+        if existing:
+            if existing.get('csv_hash') == h:
+                skip_hashes = set(existing.get('processed_hashes', []))
+                skip_addresses = set(existing.get('processed_addresses', []))
+                prior_rows = _checkpoint.load_partial_results()
+                csv_path = existing.get('csv_path', '')
+                if not (csv_path and os.path.exists(csv_path)):
+                    # temp CSV gone, write new one
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
+                    tmp.write(csv_bytes)
+                    tmp.close()
+                    csv_path = tmp.name
+            else:
+                # Different CSV — clear old checkpoint
+                _checkpoint.clear()
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
                 tmp.write(csv_bytes)
                 tmp.close()
                 csv_path = tmp.name
         else:
-            # Different CSV — clear old checkpoint
-            _checkpoint.clear()
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
             tmp.write(csv_bytes)
             tmp.close()
             csv_path = tmp.name
-    else:
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
-        tmp.write(csv_bytes)
-        tmp.close()
-        csv_path = tmp.name
 
-    stop_event = threading.Event()
+        stop_event = threading.Event()
 
-    with _lock:
-        _job.update({
-            'status': 'running',
-            'stop_event': stop_event,
-            'progress': {
-                'current': len(skip_hashes) + len(skip_addresses),
-                'total': 0,
-            },
-            'rows': prior_rows,
-            'errors': [],
-            'counters': {'new': 0, 'failed': 0, 'skipped': 0},
-            'log': ['Resuming from checkpoint...' if skip_hashes or skip_addresses else 'Starting...'],
-            'started_at': datetime.now(),
-            'csv_hash': h,
-            'tmp_csv_path': csv_path,
-            'last_hash': '',
-        })
+        with _lock:
+            _job.update({
+                'status': 'running',
+                'stop_event': stop_event,
+                'progress': {
+                    'current': len(skip_hashes) + len(skip_addresses),
+                    'total': 0,
+                },
+                'rows': prior_rows,
+                'errors': [],
+                'counters': {'new': 0, 'failed': 0, 'skipped': 0},
+                'log': ['Resuming from checkpoint...' if skip_hashes or skip_addresses else 'Starting...'],
+                'started_at': datetime.now(),
+                'csv_hash': h,
+                'tmp_csv_path': csv_path,
+                'last_hash': '',
+            })
 
-    t = threading.Thread(
-        target=_run_thread,
-        args=(csv_path, etherscan_key, skip_hashes, skip_addresses),
-        daemon=True,
-        name='pipeline-worker',
-    )
-    with _lock:
-        _job['thread'] = t
-    t.start()
+        t = threading.Thread(
+            target=_run_thread,
+            args=(csv_path, etherscan_key, skip_hashes, skip_addresses),
+            daemon=True,
+            name='pipeline-worker',
+        )
+        with _lock:
+            _job['thread'] = t
+        t.start()
+    except Exception:
+        with _lock:
+            _job['status'] = 'idle'
+        raise
 
 
 def stop() -> None:
@@ -299,53 +304,59 @@ def auto_resume_if_checkpoint() -> bool:
         if _job['status'] in ('running', 'starting'):
             return False
 
-    existing = _checkpoint.load()
-    if not existing or existing.get('status') != 'running':
-        return False
-
-    csv_path = existing.get('csv_path', '')
-    if not csv_path or not os.path.exists(csv_path):
-        return False  # can't resume without the CSV
-
-    skip_hashes = set(existing.get('processed_hashes', []))
-    skip_addresses = set(existing.get('processed_addresses', []))
-    prior_rows = _checkpoint.load_partial_results()
-    etherscan_key = os.getenv('ETHERSCAN_API_KEY')
-
     try:
-        started_at = datetime.fromisoformat(existing.get('started_at', ''))
-    except ValueError:
-        started_at = datetime.now()
+        existing = _checkpoint.load()
+        if not existing or existing.get('status') != 'running':
+            return False
 
-    stop_event = threading.Event()
+        csv_path = existing.get('csv_path', '')
+        if not csv_path or not os.path.exists(csv_path):
+            return False  # can't resume without the CSV
 
-    with _lock:
-        if _job['status'] in ('running', 'starting'):
-            return False  # race condition: someone else started while we checked
-        _job.update({
-            'status': 'running',
-            'stop_event': stop_event,
-            'progress': {
-                'current': len(skip_hashes) + len(skip_addresses),
-                'total': 0,
-            },
-            'rows': prior_rows,
-            'errors': [],
-            'counters': {'new': 0, 'failed': 0, 'skipped': 0},
-            'log': ['Auto-resuming from checkpoint...'],
-            'started_at': started_at,
-            'csv_hash': existing.get('csv_hash'),
-            'tmp_csv_path': csv_path,
-            'last_hash': '',
-        })
+        skip_hashes = set(existing.get('processed_hashes', []))
+        skip_addresses = set(existing.get('processed_addresses', []))
+        prior_rows = _checkpoint.load_partial_results()
+        etherscan_key = os.getenv('ETHERSCAN_API_KEY')
 
-    t = threading.Thread(
-        target=_run_thread,
-        args=(csv_path, etherscan_key, skip_hashes, skip_addresses),
-        daemon=True,
-        name='pipeline-worker',
-    )
-    with _lock:
-        _job['thread'] = t
-    t.start()
-    return True
+        try:
+            started_at = datetime.fromisoformat(existing.get('started_at', ''))
+        except ValueError:
+            started_at = datetime.now()
+
+        stop_event = threading.Event()
+
+        with _lock:
+            if _job['status'] in ('running', 'starting'):
+                return False  # race condition: someone else started while we checked
+            _job.update({
+                'status': 'running',
+                'stop_event': stop_event,
+                'progress': {
+                    'current': len(skip_hashes) + len(skip_addresses),
+                    'total': 0,
+                },
+                'rows': prior_rows,
+                'errors': [],
+                'counters': {'new': 0, 'failed': 0, 'skipped': 0},
+                'log': ['Auto-resuming from checkpoint...'],
+                'started_at': started_at,
+                'csv_hash': existing.get('csv_hash'),
+                'tmp_csv_path': csv_path,
+                'last_hash': '',
+            })
+
+        t = threading.Thread(
+            target=_run_thread,
+            args=(csv_path, etherscan_key, skip_hashes, skip_addresses),
+            daemon=True,
+            name='pipeline-worker',
+        )
+        with _lock:
+            _job['thread'] = t
+        t.start()
+        return True
+    except Exception:
+        with _lock:
+            if _job['status'] == 'starting':
+                _job['status'] = 'idle'
+        return False
