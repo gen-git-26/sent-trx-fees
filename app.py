@@ -7,6 +7,7 @@ import csv
 import sys
 import os
 import time
+import tempfile
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -53,7 +54,7 @@ def _render_job_panel(state: dict) -> None:
 
     current = progress.get('current', 0)
     total = progress.get('total', 0)
-    pct = current / max(total, 1)
+    pct = min(current / max(total, 1), 1.0) if total > 0 else 0.0
 
     # ---- Header row ----
     col_status, col_stop = st.columns([3, 1])
@@ -152,7 +153,6 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
 
     # Validate columns
-    import tempfile
     val_tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as val_tmp:
