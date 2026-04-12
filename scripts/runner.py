@@ -222,6 +222,8 @@ def run_pipeline(
                 if update.get('type') == 'stopped':
                     stopped = True
                     break
+                if update.get('type') == 'skipped':
+                    continue
                 yield update
             if stopped:
                 break
@@ -240,6 +242,8 @@ def run_pipeline(
                     if update.get('type') == 'stopped':
                         stopped = True
                         break
+                    if update.get('type') == 'skipped':
+                        continue
                     yield update
                 if stopped:
                     break
