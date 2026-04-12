@@ -49,6 +49,13 @@ _job = {
 def _reset_for_testing() -> None:
     """Reset singleton to idle state. Only for use in tests."""
     with _lock:
+        se = _job.get('stop_event')
+        t = _job.get('thread')
+    if se is not None:
+        se.set()
+    if t is not None and t.is_alive():
+        t.join(timeout=2.0)
+    with _lock:
         _job.update({
             'status': 'idle',
             'thread': None,
@@ -66,6 +73,7 @@ def _reset_for_testing() -> None:
 
 
 def _log(msg: str) -> None:
+    # Caller must hold _lock before calling this function.
     _job['log'].append(msg)
     if len(_job['log']) > 20:
         _job['log'] = _job['log'][-20:]
@@ -73,6 +81,15 @@ def _log(msg: str) -> None:
 
 def _csv_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _cleanup_tmp_csv(csv_path: str) -> None:
+    """Delete temp CSV if it was created by job_manager (not user-provided)."""
+    try:
+        if csv_path and csv_path.startswith(tempfile.gettempdir()) and os.path.exists(csv_path):
+            os.unlink(csv_path)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -139,12 +156,14 @@ def _run_thread(
                 with _lock:
                     _job['status'] = 'stopped'
                     _log('Run stopped.')
+                _cleanup_tmp_csv(csv_path)
                 return
 
             elif utype == 'fatal':
                 with _lock:
                     _job['status'] = 'error'
                     _log(f"Fatal error: {update['message']}")
+                _cleanup_tmp_csv(csv_path)
                 return
 
             elif utype == 'done':
@@ -158,12 +177,14 @@ def _run_thread(
                     _job['status'] = 'done'
                     _log(f"Done — {c['new']} succeeded, {c['failed']} failed, {c['skipped']} skipped.")
                 _checkpoint.clear()
+                _cleanup_tmp_csv(csv_path)
                 return
 
     except Exception as e:
         with _lock:
             _job['status'] = 'error'
             _log(f'Unexpected error: {e}')
+        _cleanup_tmp_csv(csv_path)
 
 
 # ---------------------------------------------------------------------------
@@ -194,8 +215,9 @@ def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
     Raises RuntimeError if a job is already running.
     """
     with _lock:
-        if _job['status'] == 'running':
+        if _job['status'] in ('running', 'starting'):
             raise RuntimeError('A job is already running.')
+        _job['status'] = 'starting'   # claim slot before releasing lock
 
     h = _csv_hash(csv_bytes)
     existing = _checkpoint.load()
@@ -274,7 +296,7 @@ def auto_resume_if_checkpoint() -> bool:
     still on disk, starts a resume thread automatically. Returns True if resumed.
     """
     with _lock:
-        if _job['status'] == 'running':
+        if _job['status'] in ('running', 'starting'):
             return False
 
     existing = _checkpoint.load()
@@ -298,6 +320,8 @@ def auto_resume_if_checkpoint() -> bool:
     stop_event = threading.Event()
 
     with _lock:
+        if _job['status'] in ('running', 'starting'):
+            return False  # race condition: someone else started while we checked
         _job.update({
             'status': 'running',
             'stop_event': stop_event,
