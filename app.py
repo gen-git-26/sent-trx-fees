@@ -6,15 +6,20 @@ import io
 import csv
 import sys
 import os
-import tempfile
+import time
+from datetime import datetime, timedelta
 
 import streamlit as st
 
 # Allow importing from scripts/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 
-from runner import validate_csv_columns, run_pipeline, MissingColumnsError
+from runner import validate_csv_columns, MissingColumnsError
 from process_merchant_csv import OUTPUT_COLUMNS
+import job_manager
+
+# ---- Auto-resume on startup (once per process) ----
+job_manager.auto_resume_if_checkpoint()
 
 # ---- Page config ----
 st.set_page_config(
@@ -28,14 +33,126 @@ st.image("logo_bit.jpg", width=280)
 st.title("Blockchain Fee Calculator")
 st.markdown("---")
 
-# ---- Step 1: Upload ----
+
+def _format_duration(seconds: float) -> str:
+    td = timedelta(seconds=int(max(seconds, 0)))
+    h, rem = divmod(td.seconds, 3600)
+    m, s = divmod(rem, 60)
+    if td.days or h:
+        return f"{td.days * 24 + h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _render_job_panel(state: dict) -> None:
+    """Render the live progress panel for a running/stopped/done/error job."""
+    status = state['status']
+    progress = state['progress']
+    counters = state['counters']
+    log = state['log']
+    started_at = state['started_at']
+
+    current = progress.get('current', 0)
+    total = progress.get('total', 0)
+    pct = current / max(total, 1)
+
+    # ---- Header row ----
+    col_status, col_stop = st.columns([3, 1])
+    with col_status:
+        if status == 'running':
+            st.markdown("**● Running...**")
+        elif status == 'stopped':
+            st.warning("Stopped — partial results available below.")
+        elif status == 'done':
+            c = counters
+            if c['failed'] == 0 and c['skipped'] == 0:
+                st.success(f"Done — {c['new']} transactions processed successfully.")
+            elif c['failed'] == 0:
+                st.warning(f"Done — {c['new']} processed, {c['skipped']} skipped.")
+            else:
+                st.warning(f"Done — {c['new']} succeeded, {c['failed']} failed, {c['skipped']} skipped.")
+        elif status == 'error':
+            st.error(f"Error: {log[-1] if log else 'Unknown error'}")
+
+    with col_stop:
+        if status == 'running':
+            if st.button("■ Stop", type="secondary"):
+                job_manager.stop()
+                st.rerun()
+
+    # ---- Progress bar ----
+    label = f"{int(pct * 100)}%  ({current}/{total})" if total > 0 else "Starting..."
+    st.progress(pct, text=label)
+
+    # ---- Timing ----
+    if started_at:
+        elapsed = (datetime.now() - started_at).total_seconds()
+        elapsed_str = _format_duration(elapsed)
+        if current >= 5 and total > current:
+            eta_seconds = elapsed / current * (total - current)
+            eta_str = _format_duration(eta_seconds)
+            st.caption(f"Elapsed: {elapsed_str}   •   Est. remaining: ~{eta_str}")
+        else:
+            st.caption(f"Elapsed: {elapsed_str}")
+
+    # ---- Last processed hash ----
+    if state.get('last_hash') and status == 'running':
+        last = state['last_hash']
+        display = last[:20] + '...' if len(last) > 20 else last
+        st.caption(f"Last processed: {display}")
+
+    # ---- Counters ----
+    c = counters
+    st.caption(f"✓ {c['new']} succeeded   ✗ {c['failed']} failed   ↷ {c['skipped']} skipped")
+
+    # ---- Log ----
+    if log:
+        with st.expander("Status log", expanded=False):
+            for msg in log[-5:]:
+                st.info(msg)
+
+    # ---- Errors table ----
+    errors = state.get('errors', [])
+    if errors:
+        st.markdown("**Transactions with errors:**")
+        st.table([{"Hash / Address": e['hash'], "Reason": e['reason']} for e in errors])
+
+    # ---- Download ----
+    rows = state.get('rows', [])
+    if rows and status in ('done', 'stopped'):
+        st.markdown("---")
+        st.subheader("Download Results")
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
+        st.download_button(
+            label="Download Results" if status == 'done' else "Download Partial Results",
+            data=output.getvalue().encode('utf-8-sig'),
+            file_name="fee_results.csv",
+            mime="text/csv",
+            type="primary",
+        )
+
+
+# ---- Check if job is active ----
+state = job_manager.get_state()
+
+if state['status'] != 'idle':
+    _render_job_panel(state)
+    if state['status'] == 'running':
+        time.sleep(1)
+        st.rerun()
+    st.stop()
+
+# ---- Step 1: Upload (only shown when idle) ----
 st.subheader("Step 1 — Upload CSV")
 uploaded_file = st.file_uploader("Upload the ATM transactions CSV", type=["csv"])
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
 
-    # Validate columns immediately — write temp file just for validation, clean up after
+    # Validate columns
+    import tempfile
     val_tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as val_tmp:
@@ -58,94 +175,12 @@ if uploaded_file is not None:
     st.markdown("---")
     st.subheader("Step 2 — Calculate Fees")
 
+    try:
+        etherscan_key = st.secrets.get("ETHERSCAN_API_KEY")
+    except Exception:
+        etherscan_key = None
+    etherscan_key = etherscan_key or os.getenv("ETHERSCAN_API_KEY")
+
     if st.button("Calculate Fees", type="primary"):
-        tmp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode='wb') as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            rows = []
-            errors = []
-            fatal = False
-            summary = {}
-
-            try:
-                etherscan_key = st.secrets.get("ETHERSCAN_API_KEY")
-            except Exception:
-                etherscan_key = None
-            etherscan_key = etherscan_key or os.getenv("ETHERSCAN_API_KEY")
-            for update in run_pipeline(tmp_path, etherscan_api_key=etherscan_key):
-                utype = update.get('type')
-
-                if utype == 'status':
-                    status_text.info(update['message'])
-
-                elif utype == 'progress':
-                    pct = update['current'] / max(update['total'], 1)
-                    progress_bar.progress(pct)
-                    status_text.info(f"[{update['current']}/{update['total']}] Processing: {update['hash'][:20]}...")
-
-                elif utype == 'error':
-                    errors.append(update)
-
-                elif utype == 'fatal':
-                    st.error(f"Process did not complete successfully: {update['message']}")
-                    fatal = True
-                    break
-
-                elif utype == 'done':
-                    rows = update['rows']
-                    summary = update
-                    progress_bar.progress(1.0)
-
-        except Exception as e:
-            st.error(f"Process did not complete successfully: {e}")
-            fatal = True
-
-        finally:
-            if tmp_path:
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
-
-        if not fatal:
-            new = summary.get('new', 0)
-            failed = summary.get('failed', 0)
-            skipped = summary.get('skipped', 0)
-            total = new + failed
-
-            if failed == 0 and skipped == 0:
-                st.success(f"Done — {new} transactions processed successfully.")
-            elif failed == 0:
-                st.warning(f"Done — {new} processed, {skipped} skipped (check ETHERSCAN_API_KEY or no matching transactions).")
-            else:
-                msg = f"Done — {new} succeeded, {failed} failed out of {total} total."
-                if skipped:
-                    msg += f" {skipped} skipped."
-                st.warning(msg)
-
-            if errors:
-                st.markdown("**Transactions with errors:**")
-                st.table([{"Hash / Address": e['hash'], "Reason": e['reason']} for e in errors])
-
-            if rows:
-                st.markdown("---")
-                st.subheader("Step 3 — Download Results")
-
-                output = io.StringIO()
-                writer = csv.DictWriter(output, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
-                writer.writeheader()
-                writer.writerows(rows)
-
-                st.download_button(
-                    label="Download Results",
-                    data=output.getvalue().encode('utf-8-sig'),
-                    file_name="fee_results.csv",
-                    mime="text/csv",
-                    type="primary",
-                )
+        job_manager.start(file_bytes, etherscan_key=etherscan_key)
+        st.rerun()
