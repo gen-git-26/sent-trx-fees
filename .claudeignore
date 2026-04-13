@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+.next/
+__pycache__/
+*.pyc
+*.pyo
+
+# build outputs  
+dist/
+build/
+
+# runtime / deploy
+.git/
+checkpoint/
+.env
+.env.local
+*.local.json
+
+# assets 
+*.jpg
+*.jpeg
+*.png
+*.svg
+*.ico
+
+# לא רלוונטי למיגרציה
+tests/
