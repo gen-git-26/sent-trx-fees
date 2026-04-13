@@ -12,7 +12,6 @@ module.exports = {
         'bc-text-muted':'var(--bc-text-muted)',
         gold:           'var(--bc-gold)',
         'gold-hover':   'var(--bc-gold-hover)',
-        'gold-light':   'var(--bc-gold-light)',
       },
     },
   },
