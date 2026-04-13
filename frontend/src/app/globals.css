@@ -12,6 +12,9 @@
   --bc-border: #2A2A2A;
   --bc-text: #FFFFFF;
   --bc-text-muted: #9B9B9B;
+  --bc-success:     #22C55E;
+  --bc-error:       #EF4444;
+  --bc-warning:     #F59E0B;
 }
 
 body {
