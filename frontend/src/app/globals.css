@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bc-gold: #F0A500;
+  --bc-gold-hover: #D4920A;
+  --bc-gold-light: #FFF4D6;
+  --bc-black: #0A0A0A;
+  --bc-surface: #141414;
+  --bc-surface-2: #1E1E1E;
+  --bc-border: #2A2A2A;
+  --bc-text: #FFFFFF;
+  --bc-text-muted: #9B9B9B;
+}
+
+body {
+  background-color: var(--bc-black);
+  color: var(--bc-text);
+  font-family: 'Inter', sans-serif;
+}

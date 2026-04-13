@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Claude
+.claude/settings.local.json
+
 # Distribution / packaging
 .Python
 build/
@@ -14,7 +17,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/python*
 lib64/
 parts/
 sdist/
@@ -206,3 +209,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 checkpoint/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.env.local
+frontend/.env*.local
+
+# Backend env
+backend/.env
