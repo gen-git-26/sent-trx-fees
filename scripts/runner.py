@@ -70,7 +70,7 @@ def run_pipeline(
         {'type': 'status', 'message': str}
         {'type': 'progress', 'current': int, 'total': int, 'hash': str}
         {'type': 'result', 'row': dict}
-        {'type': 'error', 'hash': str, 'reason': str}
+        {'type': 'error', 'hash': str, 'input_id': str, 'reason': str}
         {'type': 'done', 'rows': List[Dict], 'new': int, 'failed': int, 'skipped': int}
         {'type': 'fatal', 'message': str}
         {'type': 'stopped'}
@@ -141,7 +141,7 @@ def run_pipeline(
             current_count = processed_count
             if result.get('error'):
                 counters['failed'] += 1
-                errors.append({'hash': tx_hash, 'reason': result['error']})
+                errors.append({'hash': tx_hash, 'input_id': tx_hash, 'reason': result['error']})
             else:
                 counters['new'] += 1
 
@@ -196,7 +196,7 @@ def run_pipeline(
                 else:
                     with counters_lock:
                         counters['failed'] += 1
-                        errors.append({'hash': tx_hash, 'reason': 'process_transaction_data returned None'})
+                        errors.append({'hash': tx_hash, 'input_id': address, 'reason': 'process_transaction_data returned None'})
 
             with counters_lock:
                 processed_count += 1
@@ -208,7 +208,7 @@ def run_pipeline(
                 processed_count += 1
                 current_count = processed_count
                 counters['failed'] += 1
-                errors.append({'hash': address, 'reason': str(e)})
+                errors.append({'hash': address, 'input_id': address, 'reason': str(e)})
             updates.append({'type': 'progress', 'current': current_count, 'total': total, 'hash': address})
 
         return updates
@@ -255,7 +255,7 @@ def run_pipeline(
         return
 
     for err in errors:
-        yield {'type': 'error', 'hash': err['hash'], 'reason': err['reason']}
+        yield {'type': 'error', 'hash': err['hash'], 'input_id': err.get('input_id'), 'reason': err['reason']}
 
     yield {
         'type': 'done',

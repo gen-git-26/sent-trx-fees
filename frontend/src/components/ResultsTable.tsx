@@ -4,10 +4,9 @@ import type { JobCounters, JobError } from '@/lib/types';
 interface Props {
   counters: JobCounters;
   errors: JobError[];
-  resultsUrl: string;
 }
 
-export function ResultsTable({ counters, errors, resultsUrl }: Props) {
+export function ResultsTable({ counters, errors }: Props) {
   const total = counters.new + counters.failed + counters.skipped;
 
   return (

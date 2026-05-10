@@ -13,6 +13,15 @@ export async function startJob(file: File): Promise<{ job_id: string }> {
   return res.json();
 }
 
+export async function retryFailedJob(): Promise<{ job_id: string }> {
+  const res = await fetch(`${API_BASE}/api/jobs/retry-failed`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail ?? 'Failed to retry failed rows');
+  }
+  return res.json();
+}
+
 export async function getStatus(): Promise<JobState> {
   const res = await fetch(`${API_BASE}/api/jobs/status`);
   if (!res.ok) throw new Error('Failed to fetch status');
@@ -25,6 +34,10 @@ export async function stopJob(): Promise<void> {
 
 export function getResultsUrl(): string {
   return `${API_BASE}/api/jobs/results`;
+}
+
+export function getErrorReportUrl(): string {
+  return `${API_BASE}/api/jobs/error-report`;
 }
 
 export async function pingBackend(): Promise<void> {

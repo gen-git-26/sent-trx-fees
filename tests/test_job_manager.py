@@ -109,3 +109,86 @@ def test_auto_resume_starts_thread_when_checkpoint_exists(monkeypatch, tmp_path)
     time.sleep(0.1)
     state = job_manager.get_state()
     assert state['status'] in ('running', 'done')
+
+
+def _wait_for_status(job_manager, statuses, timeout=2.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        state = job_manager.get_state()
+        if state['status'] in statuses:
+            return state
+        time.sleep(0.02)
+    return job_manager.get_state()
+
+
+def test_failed_report_preserves_original_csv_columns(monkeypatch):
+    import job_manager
+    import runner
+
+    csv_bytes = (
+        b'txClass,status,txHash,toAddress,cryptoCode,merchantNote\n'
+        b'cashIn,Sent,0xFAIL,,ETH,keep-me\n'
+    )
+
+    def fake_pipeline(*args, **kwargs):
+        yield {'type': 'result', 'row': {'hash': '0xFAIL', 'error': 'temporary problem'}}
+        yield {'type': 'progress', 'current': 1, 'total': 1, 'hash': '0xFAIL'}
+        yield {'type': 'error', 'hash': '0xFAIL', 'input_id': '0xFAIL', 'reason': 'temporary problem'}
+        yield {'type': 'done', 'rows': [], 'new': 0, 'failed': 1, 'skipped': 0}
+
+    monkeypatch.setattr(runner, 'run_pipeline', fake_pipeline)
+
+    job_manager.start(csv_bytes, etherscan_key=None)
+    state = _wait_for_status(job_manager, {'done'})
+
+    assert state['failed_report_available'] is True
+    assert state['successful_results_available'] is False
+    assert state['rows'] == []
+
+    fieldnames, rows = job_manager.get_failed_report()
+    assert fieldnames == ['txClass', 'status', 'txHash', 'toAddress', 'cryptoCode', 'merchantNote']
+    assert rows == [{
+        'txClass': 'cashIn',
+        'status': 'Sent',
+        'txHash': '0xFAIL',
+        'toAddress': '',
+        'cryptoCode': 'ETH',
+        'merchantNote': 'keep-me',
+    }]
+
+
+def test_retry_failed_uses_failed_original_rows_and_keeps_successes(monkeypatch):
+    import job_manager
+    import runner
+
+    csv_bytes = (
+        b'txClass,status,txHash,toAddress,cryptoCode\n'
+        b'cashIn,Sent,0xFAIL,,ETH\n'
+    )
+    calls = []
+
+    def fake_pipeline(csv_path, *args, **kwargs):
+        calls.append(open(csv_path, encoding='utf-8-sig').read())
+        if len(calls) == 1:
+            yield {'type': 'result', 'row': {'hash': '0xFAIL', 'error': 'temporary problem'}}
+            yield {'type': 'progress', 'current': 1, 'total': 1, 'hash': '0xFAIL'}
+            yield {'type': 'error', 'hash': '0xFAIL', 'input_id': '0xFAIL', 'reason': 'temporary problem'}
+            yield {'type': 'done', 'rows': [], 'new': 0, 'failed': 1, 'skipped': 0}
+        else:
+            yield {'type': 'result', 'row': {'hash': '0xFAIL', 'fee_usd': '1.0', 'error': ''}}
+            yield {'type': 'progress', 'current': 1, 'total': 1, 'hash': '0xFAIL'}
+            yield {'type': 'done', 'rows': [], 'new': 1, 'failed': 0, 'skipped': 0}
+
+    monkeypatch.setattr(runner, 'run_pipeline', fake_pipeline)
+
+    job_manager.start(csv_bytes, etherscan_key=None)
+    _wait_for_status(job_manager, {'done'})
+    job_manager.retry_failed(etherscan_key=None)
+    state = _wait_for_status(job_manager, {'done'})
+
+    assert len(calls) == 2
+    assert 'txClass,status,txHash,toAddress,cryptoCode' in calls[1]
+    assert 'cashIn,Sent,0xFAIL,,ETH' in calls[1]
+    assert state['failed_report_available'] is False
+    assert state['successful_results_available'] is True
+    assert state['rows'] == [{'hash': '0xFAIL', 'fee_usd': '1.0', 'error': ''}]

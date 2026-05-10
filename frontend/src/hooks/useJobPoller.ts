@@ -11,6 +11,8 @@ const INITIAL_STATE: JobState = {
   last_hash: '',
   elapsed_seconds: null,
   errors: [],
+  failed_report_available: false,
+  successful_results_available: false,
 };
 
 export function useJobPoller() {
