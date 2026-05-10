@@ -79,6 +79,8 @@ def get_status():
         "last_hash": state.get('last_hash', ''),
         "elapsed_seconds": round(elapsed, 1) if elapsed else None,
         "errors": state.get('errors', []),
+        "failed_report_available": state.get('failed_report_available', False),
+        "successful_results_available": state.get('successful_results_available', False),
     }
 
 
@@ -86,6 +88,34 @@ def get_status():
 def stop_job():
     job_manager.stop()
     return {"message": "Stop signal sent"}
+
+
+@app.post("/api/jobs/retry-failed")
+def retry_failed_job():
+    etherscan_key = os.getenv("ETHERSCAN_API_KEY")
+    try:
+        job_manager.retry_failed(etherscan_key=etherscan_key)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"job_id": "singleton", "message": "Retry started"}
+
+
+@app.get("/api/jobs/error-report")
+def download_error_report():
+    fieldnames, rows = job_manager.get_failed_report()
+    if not fieldnames or not rows:
+        raise HTTPException(status_code=409, detail="No failed rows available")
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+    writer.writeheader()
+    writer.writerows(rows)
+
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=failed_rows_original_columns.csv"}
+    )
 
 
 @app.get("/api/jobs/results")

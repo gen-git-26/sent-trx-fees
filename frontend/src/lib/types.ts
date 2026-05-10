@@ -24,4 +24,6 @@ export interface JobState {
   last_hash: string;
   elapsed_seconds: number | null;
   errors: JobError[];
+  failed_report_available: boolean;
+  successful_results_available: boolean;
 }

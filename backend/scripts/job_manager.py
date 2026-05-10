@@ -3,18 +3,22 @@ job_manager.py — Module-level background-thread singleton for the processing p
 
 Public API:
     start(csv_bytes, etherscan_key)      — start pipeline in background thread
+    retry_failed(etherscan_key)          — retry the failed source rows from the last job
     stop()                               — signal stop; thread finishes current tx
     get_state()                          — thread-safe snapshot for the UI
+    get_failed_report()                  — failed source rows using original CSV columns
     auto_resume_if_checkpoint()          — called at app startup; resumes if checkpoint found
 """
 
+import csv
 import hashlib
+import io
 import os
 import sys
 import tempfile
 import threading
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
@@ -31,18 +35,21 @@ from process_merchant_csv import OUTPUT_COLUMNS
 _lock = threading.Lock()
 
 _job = {
-    'status': 'idle',       # idle | running | stopped | done | error
+    'status': 'idle',       # idle | starting | running | stopped | done | error
     'thread': None,
     'stop_event': None,
     'progress': {'current': 0, 'total': 0},
-    'rows': [],
+    'rows': [],             # successful output rows only
     'errors': [],
+    'failed_input_rows': [], # original CSV rows for failed transactions
     'counters': {'new': 0, 'failed': 0, 'skipped': 0},
     'log': [],
     'started_at': None,
     'csv_hash': None,
     'tmp_csv_path': None,
     'last_hash': '',
+    'original_fieldnames': [],
+    'original_rows': [],
 }
 
 
@@ -63,12 +70,15 @@ def _reset_for_testing() -> None:
             'progress': {'current': 0, 'total': 0},
             'rows': [],
             'errors': [],
+            'failed_input_rows': [],
             'counters': {'new': 0, 'failed': 0, 'skipped': 0},
             'log': [],
             'started_at': None,
             'csv_hash': None,
             'tmp_csv_path': None,
             'last_hash': '',
+            'original_fieldnames': [],
+            'original_rows': [],
         })
 
 
@@ -81,6 +91,48 @@ def _log(msg: str) -> None:
 
 def _csv_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _read_source_rows(csv_path: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    """Read original CSV headers and rows so failed inputs can be downloaded/retried."""
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        return list(reader.fieldnames or []), list(reader)
+
+
+def _rows_to_csv_bytes(fieldnames: List[str], rows: List[Dict[str, str]]) -> bytes:
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue().encode('utf-8-sig')
+
+
+def _dedupe_rows(rows: List[Dict[str, str]], fieldnames: List[str]) -> List[Dict[str, str]]:
+    seen = set()
+    deduped = []
+    for row in rows:
+        key = tuple(row.get(col, '') for col in fieldnames)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
+def _matching_source_rows(identifier: str, input_id: Optional[str] = None) -> List[Dict[str, str]]:
+    """Find original CSV rows that produced a failed hash/address."""
+    needles = {v.strip().lower() for v in (identifier, input_id or '') if v and v.strip()}
+    if not needles:
+        return []
+
+    matches = []
+    for row in _job.get('original_rows', []):
+        tx_hash = row.get('txHash', '').strip().lower()
+        to_address = row.get('toAddress', '').strip().lower()
+        if tx_hash in needles or to_address in needles:
+            matches.append(row)
+    return matches
 
 
 def _cleanup_tmp_csv(csv_path: str) -> None:
@@ -144,13 +196,25 @@ def _run_thread(
 
             elif utype == 'result':
                 row = update['row']
+                if row.get('error'):
+                    continue
                 with _lock:
-                    _job['rows'].append(row)
-                _checkpoint.append_result(row, OUTPUT_COLUMNS)
+                    existing_hashes = {r.get('hash') for r in _job['rows'] if r.get('hash')}
+                    if row.get('hash') not in existing_hashes:
+                        _job['rows'].append(row)
+                        _checkpoint.append_result(row, OUTPUT_COLUMNS)
 
             elif utype == 'error':
                 with _lock:
                     _job['errors'].append(update)
+                    failed_rows = _matching_source_rows(
+                        update.get('hash', ''),
+                        update.get('input_id'),
+                    )
+                    _job['failed_input_rows'] = _dedupe_rows(
+                        _job['failed_input_rows'] + failed_rows,
+                        _job['original_fieldnames'],
+                    )
 
             elif utype == 'stopped':
                 with _lock:
@@ -199,6 +263,9 @@ def get_state() -> dict:
             'progress': dict(_job['progress']),
             'rows': list(_job['rows']),
             'errors': list(_job['errors']),
+            'failed_input_rows': list(_job['failed_input_rows']),
+            'failed_report_available': bool(_job['failed_input_rows']),
+            'successful_results_available': bool(_job['rows']),
             'counters': dict(_job['counters']),
             'log': list(_job['log']),
             'started_at': _job['started_at'],
@@ -206,14 +273,12 @@ def get_state() -> dict:
         }
 
 
-def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
-    """
-    Start the pipeline in a background thread.
-
-    If a checkpoint for the same CSV exists, resumes from that checkpoint.
-    If a checkpoint for a different CSV exists, clears it and starts fresh.
-    Raises RuntimeError if a job is already running.
-    """
+def _start_job(
+    csv_bytes: bytes,
+    etherscan_key: Optional[str] = None,
+    initial_rows: Optional[List[dict]] = None,
+    retrying_failed: bool = False,
+) -> None:
     with _lock:
         if _job['status'] in ('running', 'starting'):
             raise RuntimeError('A job is already running.')
@@ -225,33 +290,34 @@ def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
 
         skip_hashes: set = set()
         skip_addresses: set = set()
-        prior_rows: List[dict] = []
+        prior_rows: List[dict] = list(initial_rows or [])
 
-        if existing:
+        if existing and not retrying_failed:
             if existing.get('csv_hash') == h:
                 skip_hashes = set(existing.get('processed_hashes', []))
                 skip_addresses = set(existing.get('processed_addresses', []))
                 prior_rows = _checkpoint.load_partial_results()
                 csv_path = existing.get('csv_path', '')
                 if not (csv_path and os.path.exists(csv_path)):
-                    # temp CSV gone, write new one
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
                     tmp.write(csv_bytes)
                     tmp.close()
                     csv_path = tmp.name
             else:
-                # Different CSV — clear old checkpoint
                 _checkpoint.clear()
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
                 tmp.write(csv_bytes)
                 tmp.close()
                 csv_path = tmp.name
         else:
+            if retrying_failed:
+                _checkpoint.clear()
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb')
             tmp.write(csv_bytes)
             tmp.close()
             csv_path = tmp.name
 
+        fieldnames, source_rows = _read_source_rows(csv_path)
         stop_event = threading.Event()
 
         with _lock:
@@ -264,12 +330,15 @@ def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
                 },
                 'rows': prior_rows,
                 'errors': [],
+                'failed_input_rows': [],
                 'counters': {'new': 0, 'failed': 0, 'skipped': 0},
-                'log': ['Resuming from checkpoint...' if skip_hashes or skip_addresses else 'Starting...'],
+                'log': ['Retrying failed rows...' if retrying_failed else ('Resuming from checkpoint...' if skip_hashes or skip_addresses else 'Starting...')],
                 'started_at': datetime.now(),
                 'csv_hash': h,
                 'tmp_csv_path': csv_path,
                 'last_hash': '',
+                'original_fieldnames': fieldnames,
+                'original_rows': source_rows,
             })
 
         t = threading.Thread(
@@ -285,6 +354,44 @@ def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
         with _lock:
             _job['status'] = 'idle'
         raise
+
+
+def start(csv_bytes: bytes, etherscan_key: Optional[str] = None) -> None:
+    """
+    Start the pipeline in a background thread.
+
+    If a checkpoint for the same CSV exists, resumes from that checkpoint.
+    If a checkpoint for a different CSV exists, clears it and starts fresh.
+    Raises RuntimeError if a job is already running.
+    """
+    _start_job(csv_bytes, etherscan_key=etherscan_key)
+
+
+def retry_failed(etherscan_key: Optional[str] = None) -> None:
+    """Retry failed source rows from the last completed/stopped job via the UI."""
+    with _lock:
+        if _job['status'] in ('running', 'starting'):
+            raise RuntimeError('A job is already running.')
+        fieldnames = list(_job.get('original_fieldnames') or [])
+        failed_rows = list(_job.get('failed_input_rows') or [])
+        successful_rows = list(_job.get('rows') or [])
+
+    if not fieldnames or not failed_rows:
+        raise RuntimeError('No failed rows are available to retry.')
+
+    csv_bytes = _rows_to_csv_bytes(fieldnames, failed_rows)
+    _start_job(
+        csv_bytes,
+        etherscan_key=etherscan_key,
+        initial_rows=successful_rows,
+        retrying_failed=True,
+    )
+
+
+def get_failed_report() -> Tuple[List[str], List[Dict[str, str]]]:
+    """Return failed source rows with the exact original CSV columns/order."""
+    with _lock:
+        return list(_job.get('original_fieldnames') or []), list(_job.get('failed_input_rows') or [])
 
 
 def stop() -> None:
@@ -317,6 +424,7 @@ def auto_resume_if_checkpoint() -> bool:
         skip_addresses = set(existing.get('processed_addresses', []))
         prior_rows = _checkpoint.load_partial_results()
         etherscan_key = os.getenv('ETHERSCAN_API_KEY')
+        fieldnames, source_rows = _read_source_rows(csv_path)
 
         try:
             started_at = datetime.fromisoformat(existing.get('started_at', ''))
@@ -337,12 +445,15 @@ def auto_resume_if_checkpoint() -> bool:
                 },
                 'rows': prior_rows,
                 'errors': [],
+                'failed_input_rows': [],
                 'counters': {'new': 0, 'failed': 0, 'skipped': 0},
                 'log': ['Auto-resuming from checkpoint...'],
                 'started_at': started_at,
                 'csv_hash': existing.get('csv_hash'),
                 'tmp_csv_path': csv_path,
                 'last_hash': '',
+                'original_fieldnames': fieldnames,
+                'original_rows': source_rows,
             })
 
         t = threading.Thread(
