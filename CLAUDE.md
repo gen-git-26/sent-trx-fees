@@ -1,7 +1,7 @@
 # Bitcoin Change — Fee Calculator Migration
 
 ## Project
-Migrating Streamlit app to Next.js (frontend) + FastAPI (backend).
+Migrated from Streamlit to Next.js (frontend) + FastAPI (backend).
 PRD: bitcoin-change-migration-prd.md — READ THIS FIRST before any task.
 
 ## Stack

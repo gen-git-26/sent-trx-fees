@@ -1,5 +1,5 @@
 """
-runner.py — callable processing pipeline for the Streamlit UI.
+runner.py — callable processing pipeline for the web UI.
 
 Exports:
     validate_csv_columns(file_path)  — raises MissingColumnsError if invalid

@@ -823,7 +823,7 @@ CHECKPOINT_DIR = os.path.join(
 ב-Render, תיקיית ה-`/opt/render/project/src/checkpoint/` תיווצר אוטומטית.
 **אין לשנות את הנתיב** — הוא עובד גם ב-backend/ directory.
 
-**שינוי אחד**: ב-`job_manager.py`, ה-`auto_resume_if_checkpoint()` נקרא מ-`main.py` במקום מ-`app.py`:
+**שינוי אחד**: ב-`job_manager.py`, ה-`auto_resume_if_checkpoint()` נקרא מ-`main.py`; ה-Streamlit `app.py` הוסר:
 ```python
 # main.py
 job_manager.auto_resume_if_checkpoint()  # כבר מוגדר למעלה
