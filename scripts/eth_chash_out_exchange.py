@@ -101,7 +101,7 @@ def get_transactions_from_address(address: str, api_key: str, max_retries: int =
             else:
                 raise TransactionValidationError(f"Network error after {max_retries} attempts: {e}")
 
-def process_transaction_data(tx_data: dict, price_cache: dict, rate_cache: dict):
+def process_transaction_data(tx_data: dict, price_cache: dict, rate_cache: dict, cache_lock=None):
     """
     Process a single transaction dictionary returned from txlist.
     """
@@ -124,7 +124,7 @@ def process_transaction_data(tx_data: dict, price_cache: dict, rate_cache: dict)
         date_str = date_obj.strftime('%Y-%m-%d')
         
         # 1. Get ETH Price in USD
-        eth_price_usd = get_crypto_usd_price('ETH', date_str, price_cache)
+        eth_price_usd = get_crypto_usd_price('ETH', date_str, price_cache, cache_lock)
         
         if eth_price_usd is None:
              print(f"Error: Could not fetch ETH price for {date_str}")
@@ -134,7 +134,11 @@ def process_transaction_data(tx_data: dict, price_cache: dict, rate_cache: dict)
         
         # 2. Get ILS Exchange Rate
         try:
-            usd_ils_rate = get_historical_rate(date_str, rate_cache)
+            if cache_lock is not None:
+                with cache_lock:
+                    usd_ils_rate = get_historical_rate(date_str, rate_cache)
+            else:
+                usd_ils_rate = get_historical_rate(date_str, rate_cache)
         except ExchangeRateAPIError as e:
              print(f"Warning: Exchange rate error for {date_str}: {e}")
              print("Could not retrieve exchange rate.")
