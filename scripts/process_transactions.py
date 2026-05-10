@@ -74,7 +74,7 @@ def read_input_csv(file_path: str) -> List[str]:
         sys.exit(1)
 
 
-def get_crypto_usd_price(crypto_symbol: str, date: str, cache: Dict) -> float:
+def get_crypto_usd_price(crypto_symbol: str, date: str, cache: Dict, cache_lock: Optional[threading.Lock] = None) -> float:
     """
     Get historical cryptocurrency price in USD.
 
@@ -82,15 +82,27 @@ def get_crypto_usd_price(crypto_symbol: str, date: str, cache: Dict) -> float:
         crypto_symbol: Cryptocurrency symbol (BTC, ETH, USDT)
         date: Date string in format 'YYYY-MM-DD'
         cache: Cache dictionary to store prices
+        cache_lock: Optional lock that protects cache reads/writes and prevents
+            duplicate concurrent requests for the same cached price
 
     Returns:
         Price in USD
     """
     cache_key = f"{crypto_symbol}_{date}"
 
+    if cache_lock is not None:
+        with cache_lock:
+            if cache_key in cache:
+                return cache[cache_key]
+            return _fetch_and_cache_crypto_usd_price(crypto_symbol, date, cache_key, cache)
+
     if cache_key in cache:
         return cache[cache_key]
 
+    return _fetch_and_cache_crypto_usd_price(crypto_symbol, date, cache_key, cache)
+
+
+def _fetch_and_cache_crypto_usd_price(crypto_symbol: str, date: str, cache_key: str, cache: Dict) -> float:
     try:
         # Convert date to timestamp
         date_obj = datetime.strptime(date, '%Y-%m-%d')
@@ -133,7 +145,7 @@ def get_crypto_usd_price(crypto_symbol: str, date: str, cache: Dict) -> float:
         raise RuntimeError(f"Could not fetch {crypto_symbol} price for {date}: {e}") from e
 
 
-def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, price_cache: Dict, max_retries: int = 3) -> Dict:
+def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, price_cache: Dict, max_retries: int = 3, cache_lock: Optional[threading.Lock] = None) -> Dict:
     """
     Process a single transaction hash and calculate all fees.
     Implements retry logic with exponential backoff for network errors.
@@ -144,6 +156,7 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
         rate_cache: Cache for exchange rates
         price_cache: Cache for crypto prices
         max_retries: Maximum number of retry attempts (default: 3)
+        cache_lock: Optional lock that protects shared rate/price caches
 
     Returns:
         Dictionary with processed transaction data
@@ -176,12 +189,16 @@ def process_transaction(tx_hash: str, etherscan_api_key: str, rate_cache: Dict, 
             date = tx_data['date']
 
             # Get crypto price in USD
-            crypto_price_usd = get_crypto_usd_price(fee_symbol, date, price_cache)
+            crypto_price_usd = get_crypto_usd_price(fee_symbol, date, price_cache, cache_lock)
             fee_usd = fee_crypto * crypto_price_usd
 
             # Get USD/ILS exchange rate
             try:
-                usd_ils_rate = get_historical_rate(date, rate_cache)
+                if cache_lock is not None:
+                    with cache_lock:
+                        usd_ils_rate = get_historical_rate(date, rate_cache)
+                else:
+                    usd_ils_rate = get_historical_rate(date, rate_cache)
             except ExchangeRateAPIError as e:
                 raise RuntimeError(f"Could not get exchange rate for {date}: {e}") from e
 
@@ -433,7 +450,7 @@ def main():
     print("Exchange rates will be fetched on demand from Yahoo Finance...")
     rate_cache = preload_all_rates()
     price_cache: Dict = {}
-    cache_lock = threading.Lock()  # Protects price_cache across threads
+    cache_lock = threading.Lock()  # Protects rate_cache and price_cache across threads
 
     # Define CSV columns
     columns = [
@@ -475,16 +492,8 @@ def main():
         i, tx_hash = item
         print(f"[{i}/{total}] Processing: {tx_hash[:16]}...")
 
-        # Each thread gets its own local price cache view, merged under lock
-        with cache_lock:
-            local_price_cache = dict(price_cache)
-
         assert etherscan_api_key is not None, "API key must be set"
-        result = process_transaction(tx_hash, etherscan_api_key, rate_cache, local_price_cache)
-
-        # Merge any newly fetched prices back into the shared cache
-        with cache_lock:
-            price_cache.update(local_price_cache)
+        result = process_transaction(tx_hash, etherscan_api_key, rate_cache, price_cache, cache_lock=cache_lock)
 
         with counters_lock:
             is_first_new = (counters['new'] == 0 and not file_exists)

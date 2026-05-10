@@ -148,3 +148,42 @@ def test_get_historical_rate_works_without_cache():
     with patch("fetch_exchange_rates.yf.download", return_value=df) as mock_dl2:
         get_historical_rate("2026-03-04")
     mock_dl2.assert_called_once()
+
+# ---------------------------------------------------------------------------
+# Crypto price cache synchronization
+# ---------------------------------------------------------------------------
+
+def test_get_crypto_usd_price_lock_prevents_duplicate_same_date_requests():
+    """Concurrent callers for the same symbol/date should share one cached CoinGecko response."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from process_transactions import get_crypto_usd_price
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"market_data": {"current_price": {"usd": 2500}}}
+
+    call_count = {"n": 0}
+
+    def fake_get(*args, **kwargs):
+        call_count["n"] += 1
+        time.sleep(0.05)
+        return FakeResponse()
+
+    cache = {}
+    cache_lock = threading.Lock()
+
+    with patch("requests.get", side_effect=fake_get):
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            prices = list(executor.map(
+                lambda _: get_crypto_usd_price("ETH", "2026-03-06", cache, cache_lock),
+                range(5),
+            ))
+
+    assert prices == [2500.0] * 5
+    assert cache["ETH_2026-03-06"] == pytest.approx(2500.0)
+    assert call_count["n"] == 1

@@ -123,13 +123,9 @@ def run_pipeline(
         if stop_event is not None and stop_event.is_set():
             return [{'type': 'stopped'}]
 
-        with cache_lock:
-            local_price_cache = dict(price_cache)
-
-        result = process_transaction(tx_hash, etherscan_api_key, rate_cache, local_price_cache)
-
-        with cache_lock:
-            price_cache.update(local_price_cache)
+        result = process_transaction(
+            tx_hash, etherscan_api_key, rate_cache, price_cache, cache_lock=cache_lock
+        )
 
         result = normalize_cashin_row(result)
 
@@ -178,13 +174,7 @@ def run_pipeline(
 
             for tx_data in matching_txs:
                 tx_hash = tx_data['hash']
-                with cache_lock:
-                    local_price_cache = dict(price_cache)
-
-                result = process_transaction_data(tx_data, local_price_cache, rate_cache)
-
-                with cache_lock:
-                    price_cache.update(local_price_cache)
+                result = process_transaction_data(tx_data, price_cache, rate_cache, cache_lock)
 
                 if result:
                     result = normalize_cashout_row(result)

@@ -293,13 +293,9 @@ def main():
         i, tx_hash = item
         print(f"[cashin {i}/{total_cashin}] {tx_hash[:20]}...")
 
-        with cache_lock:
-            local_price_cache = dict(price_cache)
-
-        result = process_transaction(tx_hash, etherscan_api_key, rate_cache, local_price_cache)
-
-        with cache_lock:
-            price_cache.update(local_price_cache)
+        result = process_transaction(
+            tx_hash, etherscan_api_key, rate_cache, price_cache, cache_lock=cache_lock
+        )
 
         result = normalize_cashin_row(result)
 
@@ -357,12 +353,8 @@ def main():
                             counters['skipped'] += 1
                         print(f"  Skipping {tx_hash[:12]}... (already processed)")
                         continue
-                    local_price_cache = dict(price_cache)
 
-                result = process_transaction_data(tx_data, local_price_cache, rate_cache)
-
-                with cache_lock:
-                    price_cache.update(local_price_cache)
+                result = process_transaction_data(tx_data, price_cache, rate_cache, cache_lock)
 
                 if result:
                     result = normalize_cashout_row(result)
